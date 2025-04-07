@@ -10,6 +10,9 @@ import { image } from '@kit.ImageKit';
 import fs from '@ohos.file.fs';
 import { FilterOption } from '../filter/FilterOption';
 import { PermissionHandler } from './PermissionHandler';
+import common from '@ohos.app.ability.common';
+import util from '@ohos.util';
+import Log from '@ohos/flutter_ohos/src/main/ets/util/Log';
 
 export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerBase {
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
@@ -48,7 +51,9 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
         // this.photoAssets.get(id);
         if (photoAsset != null) {
-          result.success(photoAsset.uri);
+          let realPath = FileUtils.getPathFromUri(getContext(), photoAsset.uri);
+          result.success(realPath);
+          //result.success(photoAsset.uri);
         }
         else {
           result.error(`${call.method} failed`, `not find asset by ${id}`, null);
@@ -96,12 +101,15 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           let pixelMap: image.PixelMap;
           if (width != undefined && height != undefined) {
             pixelMap = await photoAsset.getThumbnail({
-              width: width,
-              height: height,
+              width: 600,
+              height: 600,
             });
           }
           else {
-            pixelMap = await photoAsset.getThumbnail();
+            pixelMap = await photoAsset.getThumbnail({
+              width: 600,
+              height: 600,
+            }) ;
           }
           const imagePackerApi = image.createImagePacker();
 
@@ -486,5 +494,67 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
       return await assets.getFirstObject();
     }
     return null;
+  }
+}
+
+const TAG = "FileUtils";
+
+class FileUtils {
+  static getPathFromUri(context: common.Context | null, uri: string, defExtension?: string) {
+    Log.i(TAG, "getPathFromUri : " + uri);
+    let inputFile: fs.File;
+    try {
+      inputFile = fs.openSync(uri);
+    } catch (err) {
+      Log.e(TAG, "open uri file failed err:" + err)
+      return null;
+    }
+    if (inputFile == null) {
+      return null;
+    }
+    const uuid = util.generateRandomUUID();
+    if (!context) {
+      return
+    }
+    {
+      const targetDirectoryPath = context.cacheDir + "/" + uuid;
+      try {
+        fs.mkdirSync(targetDirectoryPath);
+        let targetDir = fs.openSync(targetDirectoryPath);
+        Log.i(TAG, "mkdirSync success targetDirectoryPath:" + targetDirectoryPath + " fd: " + targetDir.fd);
+        fs.closeSync(targetDir);
+      } catch (err) {
+        Log.e(TAG, "mkdirSync failed err:" + err);
+        return null;
+      }
+
+      const inputFilePath = uri.substring(uri.lastIndexOf("/") + 1);
+      const inputFilePathSplits = inputFilePath.split(".");
+      Log.i(TAG, "getPathFromUri inputFilePath: " + inputFilePath);
+      const outputFileName = inputFilePathSplits[0];
+      let extension: string;
+      if (inputFilePathSplits.length == 2) {
+        extension = "." + inputFilePathSplits[1];
+      } else {
+        if (defExtension) {
+          extension = defExtension;
+        } else {
+          extension = ".jpg";
+        }
+      }
+      const outputFilePath = targetDirectoryPath + "/" + outputFileName + extension;
+      const outputFile = fs.openSync(outputFilePath, fs.OpenMode.CREATE);
+      try {
+        Log.i(TAG, "copyFileSync inputFile fd:" + inputFile.fd + " outputFile fd:" + outputFile.fd);
+        fs.copyFileSync(inputFile.fd, outputFilePath);
+      } catch (err) {
+        Log.e(TAG, "copyFileSync failed err:" + err);
+        return null;
+      } finally {
+        fs.closeSync(inputFile);
+        fs.closeSync(outputFile);
+      }
+      return outputFilePath;
+    }
   }
 }
