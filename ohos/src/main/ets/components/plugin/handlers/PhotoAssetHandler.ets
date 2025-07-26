@@ -101,15 +101,15 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           let pixelMap: image.PixelMap;
           if (width != undefined && height != undefined) {
             pixelMap = await photoAsset.getThumbnail({
-              width: 600,
-              height: 600,
+              width: width,
+              height: height,
             });
           }
           else {
             pixelMap = await photoAsset.getThumbnail({
               width: 600,
               height: 600,
-            }) ;
+            });
           }
           const imagePackerApi = image.createImagePacker();
 

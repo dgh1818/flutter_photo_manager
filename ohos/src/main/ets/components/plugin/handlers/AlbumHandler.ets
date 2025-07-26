@@ -46,7 +46,7 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
           }
           albums.push(AlbumHandler.albumToMap(album));
         }
-
+        
         result.success(new Map<string, ESObject>(
           [['data', albums]]
         ));
