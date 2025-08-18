@@ -291,6 +291,21 @@ class PhotoManagerPlugin with BasePlugin, IosPlugin, AndroidPlugin, OhosPlugin {
     return _channel.invokeMethod(PMConstants.mGetFullFile, params);
   }
 
+  Future<String?> getFullFileReadable(
+    String filename, {
+    required int modifyAt,
+    PMProgressHandler? progressHandler,
+    int subtype = 0,
+    PMDarwinAVFileType? darwinFileType,
+  }) async {
+    final params = <String, dynamic>{
+      'filename': filename,
+      'modifyAt': modifyAt,
+    };
+    _injectProgressHandlerParams(params, progressHandler);
+    return _channel.invokeMethod(PMConstants.mGetFullFileReadable, params);
+  }
+
   Future<void> setLog(bool isLog) {
     return _channel.invokeMethod(PMConstants.mLog, isLog);
   }

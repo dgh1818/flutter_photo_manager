@@ -51,7 +51,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
         // this.photoAssets.get(id);
         if (photoAsset != null) {
-          let realPath = FileUtils.getPathFromUri(getContext(), photoAsset.uri);
+          let realPath = FileUtils.getPathFromUri(PhotoManagerPlugin.uiContext, photoAsset.uri);
           result.success(realPath);
           //result.success(photoAsset.uri);
         }
@@ -66,18 +66,24 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         //option
         //type
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
-        // this.photoAssets.get(id);
+      }
+        break;
+      case 'getFullFileReadable': {
+        let args: Map<string, ESObject> = call.args;
+        let name: string = args.get('filename');
+        let modifyAt: number = args.get('modifyAt');
+
+        let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAssetReadable(name,modifyAt);
+
         if (photoAsset != null) {
-          let file = await fs.open(photoAsset.uri, fs.OpenMode.READ_ONLY);
-          // let stat = await fs.stat(photoAsset.uri);
-          let size = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.SIZE)
-          let arrayBuffer: ArrayBuffer = new ArrayBuffer(size as number);
-          await fs.read(file.fd, arrayBuffer);
-          await fs.close(file.fd);
-          result.success(new Uint8Array(arrayBuffer));
+          console.error('photoAsset.uri：' + photoAsset.uri);
+          let realPath = FileUtils.getPathFromUri(this.uiContext, photoAsset.uri);
+          
+          console.error('get success：' + realPath);
+          result.success(realPath);
         }
         else {
-          result.error(`${call.method} failed`, `not find asset by ${args}`, null);
+          result.error(`${call.method} failed`, `not find asset by ${name}`, null);
         }
       }
         break;
@@ -428,14 +434,14 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     // let display_name = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DISPLAY_NAME);
     // let size = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.SIZE);
     let date_added = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_ADDED);
-    let date_modified = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_MODIFIED);
+    let date_modified = photoAsset.get(photoAccessHelper.PhotoKeys.DATE_MODIFIED) as number;
     let duration: number = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DURATION) as number;
     let width = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.WIDTH);
     let height = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.HEIGHT);
     // let date_taken = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_TAKEN);
     let orientation = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.ORIENTATION);
     let is_favorite = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.FAVORITE);
-    // let title = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.TITLE);
+    let title = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.TITLE);
 
     return new Map<string, ESObject>(
       [
@@ -449,8 +455,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         ['favorite', is_favorite == 1],
         // dart 会根据 title 获取图片类型，所以这里返回文件路径比较好
         // 鸿蒙的 tilte 不带扩展后缀
-        ['title', uri],
-        // ['title', title],
+        ['title', title],
         // ['subtype', subtype],
         ['createDt', date_added],
         ['modifiedDt', date_modified],
@@ -494,6 +499,42 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
       return await assets.getFirstObject();
     }
     return null;
+  }
+
+  static async getPhotoAssetReadable(name: string, modifyAt : number): Promise<photoAccessHelper.PhotoAsset | null> {
+     if (!(await PermissionHandler.permissionReadCheck())) {
+      return null;
+    }
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    let predicates: dataSharePredicates.DataSharePredicates = new dataSharePredicates.DataSharePredicates();
+    predicates.equalTo(photoAccessHelper.PhotoKeys.DISPLAY_NAME, name);
+      // .and()
+      // .equalTo(photoAccessHelper.PhotoKeys.DATE_MODIFIED_MS, modifyAt);
+
+      //TODO:恢复比较时间
+    let fetchOptions: photoAccessHelper.FetchOptions = {
+      fetchColumns: [
+        'width',
+        'height',
+        'duration',
+        'orientation',
+        'is_favorite',
+        'title',
+        'date_added',
+        'date_modified',
+        'media_type',
+        'size',
+      //...Object.keys(photoAccessHelper.PhotoKeys),
+      ],
+      predicates: predicates
+    };
+
+    let assets = await phAccessHelper.getAssets(fetchOptions);
+    if (assets.getCount() != 0) {
+      return await assets.getFirstObject();
+    }
+    return null;
+  
   }
 }
 
