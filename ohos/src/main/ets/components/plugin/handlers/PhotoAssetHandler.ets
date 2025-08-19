@@ -50,10 +50,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         // 'subtype': subtype,
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
         // this.photoAssets.get(id);
-        if (photoAsset != null) {
-          let realPath = FileUtils.getPathFromUri(PhotoManagerPlugin.uiContext, photoAsset.uri);
-          result.success(realPath);
-          //result.success(photoAsset.uri);
+         if (photoAsset != null) {
+          result.success(photoAsset.uri);
         }
         else {
           result.error(`${call.method} failed`, `not find asset by ${id}`, null);
@@ -507,6 +505,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     }
     let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
     let predicates: dataSharePredicates.DataSharePredicates = new dataSharePredicates.DataSharePredicates();
+    // predicates.equalTo(photoAccessHelper.PhotoKeys.PositionType, photoAccessHelper.PositionType.LOCAL);
+    // predicates.equalTo(photoAccessHelper.PhotoKeys.PositionType, photoAccessHelper.PositionType.LOCAL_AND_CLOUD);
     predicates.equalTo(photoAccessHelper.PhotoKeys.DISPLAY_NAME, name);
       // .and()
       // .equalTo(photoAccessHelper.PhotoKeys.DATE_MODIFIED_MS, modifyAt);
@@ -531,7 +531,11 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
 
     let assets = await phAccessHelper.getAssets(fetchOptions);
     if (assets.getCount() != 0) {
+      
       return await assets.getFirstObject();
+
+      // if(asset.PositionType == PositionType.LOCAL || asset.PositionType == PositionType.LOCAL_AND_CLOUD)
+      // return asset;
     }
     return null;
   
