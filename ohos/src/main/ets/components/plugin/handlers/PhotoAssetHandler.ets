@@ -433,7 +433,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     // let size = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.SIZE);
     let date_added = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_ADDED);
     let date_modified = photoAsset.get(photoAccessHelper.PhotoKeys.DATE_MODIFIED) as number;
-    let duration: number = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DURATION) as number;
+    let duration: number = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DURATION)/1000 as number;
     let width = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.WIDTH);
     let height = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.HEIGHT);
     // let date_taken = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_TAKEN);
