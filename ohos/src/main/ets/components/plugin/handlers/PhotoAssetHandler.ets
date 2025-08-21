@@ -51,7 +51,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
         // this.photoAssets.get(id);
          if (photoAsset != null) {
-          result.success(photoAsset.uri);
+          let realPath = FileUtils.getPathFromUri(this.uiContext, photoAsset.uri);
+          result.success(realPath);
         }
         else {
           result.error(`${call.method} failed`, `not find asset by ${id}`, null);
@@ -433,7 +434,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     // let size = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.SIZE);
     let date_added = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_ADDED);
     let date_modified = photoAsset.get(photoAccessHelper.PhotoKeys.DATE_MODIFIED) as number;
-    let duration: number = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DURATION)/1000 as number;
+    let duration: number = (PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DURATION) as number) ;
     let width = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.WIDTH);
     let height = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.HEIGHT);
     // let date_taken = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_TAKEN);
@@ -562,7 +563,10 @@ class FileUtils {
       return
     }
     {
-      const targetDirectoryPath = context.cacheDir + "/" + uuid;
+      if(!fs.accessSync(context.cacheDir + "/originalPhoto")) {
+        fs.mkdirSync(context.cacheDir + "/originalPhoto");
+      }
+      const targetDirectoryPath = context.cacheDir + "/originalPhoto/" + uuid;
       try {
         fs.mkdirSync(targetDirectoryPath);
         let targetDir = fs.openSync(targetDirectoryPath);
