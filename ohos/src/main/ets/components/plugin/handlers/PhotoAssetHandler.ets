@@ -14,6 +14,9 @@ import common from '@ohos.app.ability.common';
 import util from '@ohos.util';
 import Log from '@ohos/flutter_ohos/src/main/ets/util/Log';
 
+import { fileUri, hash } from '@kit.CoreFileKit';
+import { fileUriService } from '@kit.ScenarioFusionKit';
+
 export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerBase {
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
     if (this.uiContext == null) {
@@ -372,6 +375,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           'date_modified',
           'media_type',
           'size',
+          'position'
         //...Object.keys(photoAccessHelper.PhotoKeys),
         ],
         predicates: predicates
@@ -382,6 +386,15 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
 
       for (let index = start; index < end && index < album.count; index++) {
         let photoAsset: photoAccessHelper.PhotoAsset = await photoFetchResult.getObjectByPosition(index);
+
+        let position = photoAsset.get(photoAccessHelper.PhotoKeys.POSITION) as photoAccessHelper.PositionType;
+        if (!(position == photoAccessHelper.PositionType.LOCAL) &&
+        !(position == photoAccessHelper.PositionType.LOCAL_AND_CLOUD)) {
+          continue;
+        }
+
+        let fileUriObject = new fileUri.FileUri(photoAsset.uri);
+        //console.error('get path success:' + fileUriObject.path);
         assets.push(PhotoAssetHandler.photoAssetToMap(photoAsset));
       }
       photoFetchResult.close();

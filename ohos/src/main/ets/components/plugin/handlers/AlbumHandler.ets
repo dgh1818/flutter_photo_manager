@@ -9,6 +9,8 @@ import { PermissionHandler } from './PermissionHandler';
 import { PhotoAssetHandler } from './PhotoAssetHandler';
 import { AsyncCallback } from '@ohos.base';
 import { MapUtils } from '../utils/MapUtils';
+import { fileUri, hash } from '@kit.CoreFileKit';
+import { fileUriService } from '@kit.ScenarioFusionKit';
 
 export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
@@ -238,14 +240,41 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
         predicates.equalTo(photoAccessHelper.PhotoKeys.PHOTO_TYPE, photoAccessHelper.PhotoType.VIDEO);
       }
     }
+
+    let assetForAlbumfetchColumns: string[] = [
+      photoAccessHelper.PhotoKeys.URI,
+      photoAccessHelper.PhotoKeys.POSITION
+
+    ];
+
     let options: photoAccessHelper.FetchOptions = {
-      fetchColumns: [],
+      fetchColumns: assetForAlbumfetchColumns,
       predicates: predicates
     };
+
     let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
     let assets = await phAccessHelper.getAssets(options);
 
-    return new AllAlbum(requestType, assets.getCount());
+    let assetsPath:Array<string> = [];
+    while(!assets!.isAfterLast()) {
+
+      let current_asset = await assets!.getNextObject();
+
+      //console.error('7:5 success' + current_asset.uri);
+
+      let position = current_asset.get(photoAccessHelper.PhotoKeys.POSITION) as photoAccessHelper.PositionType;
+      //console.error('7:6 success' + current_asset.uri);
+      if (!(position == photoAccessHelper.PositionType.LOCAL) &&
+        !(position == photoAccessHelper.PositionType.LOCAL_AND_CLOUD)) {
+        continue;
+      }
+
+      let fileUriObject = new fileUri.FileUri(current_asset.uri);
+      //console.error('get path success:' + fileUriObject.path);
+      assetsPath.push(fileUriObject.path);
+    }
+
+    return new AllAlbum(requestType, assetsPath.length);
 
   }
 
