@@ -453,7 +453,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     // let date_taken = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_TAKEN);
     let orientation = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.ORIENTATION);
     let is_favorite = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.FAVORITE);
-    let title = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.TITLE);
+    let title = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DISPLAY_NAME);
 
     return new Map<string, ESObject>(
       [
