@@ -134,30 +134,20 @@ class AssetPathEntity {
     bool maxDateTimeToNow = true,
   }) async {
     optionGroup ??= FilterOptionGroup();
-    final StateError error = StateError(
-      'Unable to fetch properties for path $id.',
-    );
+    final StateError error = StateError('Unable to fetch properties for path $id.');
 
     if (maxDateTimeToNow) {
       if (optionGroup is FilterOptionGroup) {
         optionGroup = optionGroup.copyWith(
-          createTimeCond: optionGroup.createTimeCond.copyWith(
-            max: DateTime.now(),
-          ),
-          updateTimeCond: optionGroup.updateTimeCond.copyWith(
-            max: DateTime.now(),
-          ),
+          createTimeCond: optionGroup.createTimeCond.copyWith(max: DateTime.now()),
+          updateTimeCond: optionGroup.updateTimeCond.copyWith(max: DateTime.now()),
         );
       }
     } else {
       optionGroup = optionGroup;
     }
 
-    final Map<dynamic, dynamic>? result = await plugin.fetchPathProperties(
-      id,
-      type,
-      optionGroup,
-    );
+    final Map<dynamic, dynamic>? result = await plugin.fetchPathProperties(id, type, optionGroup);
     if (result == null) {
       throw error;
     }
@@ -173,9 +163,7 @@ class AssetPathEntity {
   }
 
   /// Call this method to obtain new path entity.
-  Future<AssetPathEntity> obtainForNewProperties({
-    bool maxDateTimeToNow = true,
-  }) {
+  Future<AssetPathEntity> obtainForNewProperties({bool maxDateTimeToNow = true}) {
     return AssetPathEntity.obtainPathFromProperties(
       id: id,
       albumType: albumType,
@@ -191,19 +179,10 @@ class AssetPathEntity {
   ///
   /// The length of returned assets might be less than requested.
   /// Not existing assets will be excluded from the result.
-  Future<List<AssetEntity>> getAssetListPaged({
-    required int page,
-    required int size,
-  }) {
+  Future<List<AssetEntity>> getAssetListPaged({required int page, required int size}) {
     assert(albumType == 1, 'Only album can request for assets.');
     assert(size > 0, 'Page size must be greater than 0.');
-    return plugin.getAssetListPaged(
-      id,
-      page: page,
-      size: size,
-      type: type,
-      optionGroup: filterOption,
-    );
+    return plugin.getAssetListPaged(id, page: page, size: size, type: type, optionGroup: filterOption);
   }
 
   /// Getting assets in range using [start] and [end].
@@ -214,10 +193,7 @@ class AssetPathEntity {
   ///
   /// The length of returned assets might be less than requested.
   /// Not existing assets will be excluded from the result.
-  Future<List<AssetEntity>> getAssetListRange({
-    required int start,
-    required int end,
-  }) async {
+  Future<List<AssetEntity>> getAssetListRange({required int start, required int end}) async {
     assert(albumType == 1, 'Only album can request for assets.');
     assert(start >= 0, 'The start must be greater than 0.');
     assert(end > start, 'The end must be greater than start.');
@@ -226,13 +202,7 @@ class AssetPathEntity {
     if (end > count) {
       end = count;
     }
-    return plugin.getAssetListRange(
-      id,
-      type: type,
-      start: start,
-      end: end,
-      optionGroup: filterOption,
-    );
+    return plugin.getAssetListRange(id, type: type, start: start, end: end, optionGroup: filterOption);
   }
 
   /// Request subpaths for the album.
@@ -247,14 +217,8 @@ class AssetPathEntity {
 
   /// Obtain a new [AssetPathEntity] from the current one
   /// with refreshed properties.
-  Future<AssetPathEntity?> fetchPathProperties({
-    FilterOptionGroup? filterOptionGroup,
-  }) async {
-    final Map<dynamic, dynamic>? result = await plugin.fetchPathProperties(
-      id,
-      type,
-      filterOptionGroup ?? filterOption,
-    );
+  Future<AssetPathEntity?> fetchPathProperties({FilterOptionGroup? filterOptionGroup}) async {
+    final Map<dynamic, dynamic>? result = await plugin.fetchPathProperties(id, type, filterOptionGroup ?? filterOption);
     if (result == null) {
       return null;
     }
@@ -366,8 +330,8 @@ class AssetEntity {
     double? longitude,
     this.mimeType,
     this.subtype = 0,
-  })  : _latitude = latitude,
-        _longitude = longitude;
+  }) : _latitude = latitude,
+       _longitude = longitude;
 
   /// Obtain an entity from ID.
   ///
@@ -414,8 +378,7 @@ class AssetEntity {
   Future<String> get titleAsync => plugin.getTitleAsync(this);
 
   /// {@macro photo_manager.AssetEntity.titleAsync}
-  Future<String> get titleAsyncWithSubtype =>
-      plugin.getTitleAsync(this, subtype: subtype);
+  Future<String> get titleAsyncWithSubtype => plugin.getTitleAsync(this, subtype: subtype);
 
   /// {@macro photo_manager.AssetType}
   AssetType get type => AssetType.values[typeInt];
@@ -427,7 +390,7 @@ class AssetEntity {
   final int subtype;
 
   /// Whether the asset is a live photo. Only valid on iOS/macOS.
-  bool get isLivePhoto => subtype & _livePhotosType == _livePhotosType;
+  bool get isLivePhoto => Platform.isIOS ? subtype & _livePhotosType == _livePhotosType : subtype == 3; //To do
 
   /// The type value of the [type].
   final int typeInt;
@@ -609,9 +572,8 @@ class AssetEntity {
   /// See also:
   ///  * [thumbnailDataWithSize] which is a common method to obtain thumbnails.
   ///  * [thumbnailDataWithOption] which accepts customized [ThumbnailOption].
-  Future<typed_data.Uint8List?> get thumbnailData => thumbnailDataWithSize(
-        const ThumbnailSize.square(PMConstants.vDefaultThumbnailSize),
-      );
+  Future<typed_data.Uint8List?> get thumbnailData =>
+      thumbnailDataWithSize(const ThumbnailSize.square(PMConstants.vDefaultThumbnailSize));
 
   /// Obtain the thumbnail data with the given [width] and [height] of the asset.
   ///
@@ -637,18 +599,9 @@ class AssetEntity {
     }
     final ThumbnailOption option;
     if (Platform.isIOS || Platform.isMacOS) {
-      option = ThumbnailOption.ios(
-        size: size,
-        format: format,
-        quality: quality,
-      );
+      option = ThumbnailOption.ios(size: size, format: format, quality: quality);
     } else {
-      option = ThumbnailOption(
-        size: size,
-        format: format,
-        quality: quality,
-        frame: frame,
-      );
+      option = ThumbnailOption(size: size, format: format, quality: quality, frame: frame);
     }
     assert(() {
       option.checkAssertions();
@@ -663,10 +616,7 @@ class AssetEntity {
   /// See also:
   ///  * [thumbnailData] which obtain the thumbnail data with fixed size.
   ///  * [thumbnailDataWithSize] which is a common method to obtain thumbnails.
-  Future<typed_data.Uint8List?> thumbnailDataWithOption(
-    ThumbnailOption option, {
-    PMProgressHandler? progressHandler,
-  }) {
+  Future<typed_data.Uint8List?> thumbnailDataWithOption(ThumbnailOption option, {PMProgressHandler? progressHandler}) {
     assert(() {
       _checkThumbnailAssertion();
       return true;
@@ -679,18 +629,11 @@ class AssetEntity {
       option.checkAssertions();
       return true;
     }());
-    return plugin.getThumbnail(
-      id: id,
-      option: option,
-      progressHandler: progressHandler,
-    );
+    return plugin.getThumbnail(id: id, option: option, progressHandler: progressHandler);
   }
 
   void _checkThumbnailAssertion() {
-    assert(
-      type == AssetType.image || type == AssetType.video,
-      'Only images and videos can obtain thumbnails.',
-    );
+    assert(type == AssetType.image || type == AssetType.video, 'Only images and videos can obtain thumbnails.');
   }
 
   /// The video duration in seconds.
@@ -734,20 +677,11 @@ class AssetEntity {
   /// See also:
   ///  * https://developer.android.com/reference/android/content/ContentUris
   ///  * https://developer.apple.com/documentation/avfoundation/avurlasset
-  Future<String?> getMediaUrl({
-    PMProgressHandler? progressHandler,
-  }) {
-    return plugin.getMediaUrl(
-      this,
-      progressHandler: progressHandler,
-    );
+  Future<String?> getMediaUrl({PMProgressHandler? progressHandler}) {
+    return plugin.getMediaUrl(this, progressHandler: progressHandler);
   }
 
-  bool get _platformMatched =>
-      Platform.isIOS ||
-      Platform.isMacOS ||
-      Platform.isAndroid ||
-      PlatformUtils.isOhos;
+  bool get _platformMatched => Platform.isIOS || Platform.isMacOS || Platform.isAndroid || PlatformUtils.isOhos;
 
   Future<File?> _getFile({
     bool isOrigin = false,
@@ -755,10 +689,7 @@ class AssetEntity {
     int subtype = 0,
     PMDarwinAVFileType? darwinFileType,
   }) async {
-    assert(
-      _platformMatched,
-      '${Platform.operatingSystem} does not support obtain file.',
-    );
+    assert(_platformMatched, '${Platform.operatingSystem} does not support obtain file.');
     if (!_platformMatched) {
       return null;
     }
@@ -775,13 +706,8 @@ class AssetEntity {
     return File(path);
   }
 
-  Future<typed_data.Uint8List?> _getOriginBytes({
-    PMProgressHandler? progressHandler,
-  }) async {
-    assert(
-      _platformMatched,
-      '${Platform.operatingSystem} does not support obtain raw data.',
-    );
+  Future<typed_data.Uint8List?> _getOriginBytes({PMProgressHandler? progressHandler}) async {
+    assert(_platformMatched, '${Platform.operatingSystem} does not support obtain raw data.');
     if (!_platformMatched) {
       return null;
     }
