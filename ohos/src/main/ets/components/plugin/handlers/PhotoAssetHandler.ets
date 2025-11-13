@@ -7,7 +7,7 @@ import { MethodCall } from '@ohos/flutter_ohos';
 import { RequestType } from '../types/RequestType';
 import { AlbumHandler } from './AlbumHandler';
 import { image } from '@kit.ImageKit';
-import fs from '@ohos.file.fs';
+import fs, { ReadOptions, WriteOptions } from '@ohos.file.fs';
 import { FilterOption } from '../filter/FilterOption';
 import { PermissionHandler } from './PermissionHandler';
 import common from '@ohos.app.ability.common';
@@ -16,6 +16,9 @@ import Log from '@ohos/flutter_ohos/src/main/ets/util/Log';
 
 import { fileUri, hash } from '@kit.CoreFileKit';
 import { fileUriService } from '@kit.ScenarioFusionKit';
+import { PMProgressHandler } from './PMProgressHandler';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { PMProgressState } from './PMProgressHandlerInterface';
 
 export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerBase {
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
@@ -47,18 +50,84 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         break;
       case 'getFullFile': {
         let args: Map<string, ESObject> = call.args;
-        let id: string = args.get('id');
-        // 'id': id,
+        let id: string = args.get('id') as string;
+        let subtype:number = args.get('subtype') as number
         // 'isOrigin': isOrigin,
-        // 'subtype': subtype,
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
-        // this.photoAssets.get(id);
-         if (photoAsset != null) {
-          let realPath = FileUtils.getPathFromUri(this.uiContext, photoAsset.uri);
-          result.success(realPath);
-        }
-        else {
+
+        if (!photoAsset)
+        {
           result.error(`${call.method} failed`, `not find asset by ${id}`, null);
+          return false;
+        }
+
+        let photoSubtype = photoAsset.get(photoAccessHelper.PhotoKeys.PHOTO_SUBTYPE).valueOf() as number;
+
+        if(photoSubtype==3&&subtype==3) {   //Moving Photo
+          // 获取PhotoAsset对应的动态照片对象。
+          console.error("enter get moving photo")
+
+          try {
+            await photoAccessHelper.MediaAssetManager.requestMovingPhoto(
+              this.uiContext,
+              photoAsset,
+              { deliveryMode: photoAccessHelper.DeliveryMode.HIGH_QUALITY_MODE },
+              {
+                // 把回调写成 async，这样内部可以 await requestContent
+                onDataPrepared: async (movingPhoto: photoAccessHelper.MovingPhoto) => {
+                  try {
+                    if (movingPhoto) {
+                      if(!fs.accessSync(this.uiContext!.cacheDir + "/movingPhoto")) {
+                        fs.mkdirSync(this.uiContext!.cacheDir + "/movingPhoto");
+                      }
+
+                      const targetDirectoryPath = this.uiContext!.cacheDir + "/movingPhoto/";
+                      //console.error(" targetDirectoryPat is " + targetDirectoryPath)
+                      let uri = new fileUri.FileUri(id);
+
+                      const inputFilePath = id.substring(id.lastIndexOf("/") + 1);
+                      const inputFilePathSplits = inputFilePath.split(".");
+                      const outputFileName = inputFilePathSplits[0];
+                      let extension: string = ".mp4";
+                      let outputFilePath = targetDirectoryPath  + outputFileName + extension;
+                      console.error("enter moving photo success:" + outputFilePath);
+                      // 等待 movingPhoto 写出视频资源
+                      let movingPhotoUri = movingPhoto.getUri();
+                      let index = args.get('progressHandler') as number;
+                      if (index!=undefined) {
+                        let pmProgressHandler = new PMProgressHandler(PhotoManagerPlugin.binding!,index);
+                        FileUtils.getPathFromUri(this.uiContext, result,movingPhotoUri,undefined,pmProgressHandler);
+                      } else {
+                        FileUtils.getPathFromUri(this.uiContext, result,movingPhotoUri,undefined);
+                      }
+                      //console.error("get moving photo success:" + outputFilePath);
+                      //result.success(outputFilePath);
+                    }
+                  } catch (err) {
+                    result.error("live photo error",err,null)
+                  }
+                },
+                // 可选：处理 onError
+              }
+            );
+          } catch (e) {
+            result.error("live photo error",e,null);
+            // requestMovingPhoto 本身同步抛错的情况
+
+          }
+        } else {
+          if (photoAsset != null) {
+            let index = args.get('progressHandler') as number;
+            if (index!=undefined) {
+              let pmProgressHandler = new PMProgressHandler(PhotoManagerPlugin.binding!,index);
+              let realPath = FileUtils.getPathFromUri(this.uiContext, result,photoAsset.uri,undefined,pmProgressHandler);
+            } else {
+              let realPath = FileUtils.getPathFromUri(this.uiContext, result,photoAsset.uri);
+            }
+          }
+          else {
+            result.error(`${call.method} failed`, `not find asset by ${id}`, null);
+          }
         }
       }
         break;
@@ -79,10 +148,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
 
         if (photoAsset != null) {
           console.error('photoAsset.uri：' + photoAsset.uri);
-          let realPath = FileUtils.getPathFromUri(this.uiContext, photoAsset.uri);
-          
-          console.error('get success：' + realPath);
-          result.success(realPath);
+          let realPath = FileUtils.getPathFromUri(this.uiContext, result,photoAsset.uri);
         }
         else {
           result.error(`${call.method} failed`, `not find asset by ${name}`, null);
@@ -290,6 +356,16 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         }
       }
         break;
+      case 'isLocallyAvailable':
+        let args: Map<string, ESObject> = call.args;
+        let id: string = args.get('id') as string;
+        try {
+          let islocal = await PhotoAssetHandler.isLocallyAvailable(id);
+          result.success(islocal);
+        } catch (e) {
+          result.error("not found file",e as string,null);
+        }
+        break;
       default:
         return false;
     }
@@ -365,6 +441,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
 
       let fetchOptions: photoAccessHelper.FetchOptions = {
         fetchColumns: [
+          'uri',
           'width',
           'height',
           'duration',
@@ -375,8 +452,9 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           'date_modified',
           'media_type',
           'size',
-          'position'
-        //...Object.keys(photoAccessHelper.PhotoKeys),
+          'position',
+          'subtype',
+          //...Object.keys(photoAccessHelper.PhotoKeys),
         ],
         predicates: predicates
       };
@@ -388,10 +466,10 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let photoAsset: photoAccessHelper.PhotoAsset = await photoFetchResult.getObjectByPosition(index);
 
         let position = photoAsset.get(photoAccessHelper.PhotoKeys.POSITION) as photoAccessHelper.PositionType;
-        if (!(position == photoAccessHelper.PositionType.LOCAL) &&
-        !(position == photoAccessHelper.PositionType.LOCAL_AND_CLOUD)) {
-          continue;
-        }
+        // if (!(position == photoAccessHelper.PositionType.LOCAL) &&
+        //   !(position == photoAccessHelper.PositionType.LOCAL_AND_CLOUD)) {
+        //   continue;
+        // }
 
         let fileUriObject = new fileUri.FileUri(photoAsset.uri);
         //console.error('get path success:' + fileUriObject.path);
@@ -454,6 +532,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     let orientation = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.ORIENTATION);
     let is_favorite = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.FAVORITE);
     let title = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DISPLAY_NAME);
+    let subtype = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.PHOTO_SUBTYPE) as number;
 
     return new Map<string, ESObject>(
       [
@@ -477,6 +556,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         // longitude: data['lng'] as double?,
         // ['lng', 1.0],
         ['mimeType', media_type?.toString()],
+        ['subtype', subtype],
       ]
     );
   }
@@ -491,6 +571,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     predicates.equalTo(photoAccessHelper.PhotoKeys.URI, id);
     let fetchOptions: photoAccessHelper.FetchOptions = {
       fetchColumns: [
+        'uri',
         'width',
         'height',
         'duration',
@@ -501,7 +582,9 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         'date_modified',
         'media_type',
         'size',
-      //...Object.keys(photoAccessHelper.PhotoKeys),
+        'subtype',
+        'position',
+        //...Object.keys(photoAccessHelper.PhotoKeys),
       ],
       predicates: predicates
     };
@@ -514,7 +597,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
   }
 
   static async getPhotoAssetReadable(name: string, modifyAt : number): Promise<photoAccessHelper.PhotoAsset | null> {
-     if (!(await PermissionHandler.permissionReadCheck())) {
+    if (!(await PermissionHandler.permissionReadCheck())) {
       return null;
     }
     let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
@@ -522,10 +605,10 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     // predicates.equalTo(photoAccessHelper.PhotoKeys.PositionType, photoAccessHelper.PositionType.LOCAL);
     // predicates.equalTo(photoAccessHelper.PhotoKeys.PositionType, photoAccessHelper.PositionType.LOCAL_AND_CLOUD);
     predicates.equalTo(photoAccessHelper.PhotoKeys.DISPLAY_NAME, name);
-      // .and()
-      // .equalTo(photoAccessHelper.PhotoKeys.DATE_MODIFIED_MS, modifyAt);
+    // .and()
+    // .equalTo(photoAccessHelper.PhotoKeys.DATE_MODIFIED_MS, modifyAt);
 
-      //TODO:恢复比较时间
+    //TODO:恢复比较时间
     let fetchOptions: photoAccessHelper.FetchOptions = {
       fetchColumns: [
         'width',
@@ -538,39 +621,73 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         'date_modified',
         'media_type',
         'size',
-      //...Object.keys(photoAccessHelper.PhotoKeys),
+        //...Object.keys(photoAccessHelper.PhotoKeys),
       ],
       predicates: predicates
     };
 
     let assets = await phAccessHelper.getAssets(fetchOptions);
     if (assets.getCount() != 0) {
-      
+
       return await assets.getFirstObject();
 
       // if(asset.PositionType == PositionType.LOCAL || asset.PositionType == PositionType.LOCAL_AND_CLOUD)
       // return asset;
     }
     return null;
-  
+
+  }
+
+  static async isLocallyAvailable(id:string):Promise<Boolean> {
+    if (!(await PermissionHandler.permissionReadCheck())) {
+      return false;
+    }
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    let predicates: dataSharePredicates.DataSharePredicates = new dataSharePredicates.DataSharePredicates();
+    predicates.equalTo(photoAccessHelper.PhotoKeys.URI, id);
+    let fetchOptions: photoAccessHelper.FetchOptions = {
+      fetchColumns: [
+        'uri',
+        'width',
+        'height',
+        'duration',
+        'orientation',
+        'is_favorite',
+        'title',
+        'date_added',
+        'date_modified',
+        'media_type',
+        'size',
+        'position',
+        'subtype',
+        //...Object.keys(photoAccessHelper.PhotoKeys),
+      ],
+      predicates: predicates
+    };
+
+    let assets = await phAccessHelper.getAssets(fetchOptions);
+    if (assets.getCount() == 0) {
+      return false;
+    }
+
+    let asset = await assets.getFirstObject();
+
+    let position = asset.get(photoAccessHelper.PhotoKeys.POSITION) as photoAccessHelper.PositionType;
+    if (!(position == photoAccessHelper.PositionType.LOCAL) &&
+      !(position == photoAccessHelper.PositionType.LOCAL_AND_CLOUD)) {
+      return false;
+    } else {
+      return true;
+    }
+
   }
 }
 
 const TAG = "FileUtils";
 
 class FileUtils {
-  static getPathFromUri(context: common.Context | null, uri: string, defExtension?: string) {
+  static async getPathFromUri(context: common.Context | null, result:MethodResult,uri: string, defExtension?: string, pmProgressHandler?:PMProgressHandler) {
     Log.i(TAG, "getPathFromUri : " + uri);
-    let inputFile: fs.File;
-    try {
-      inputFile = fs.openSync(uri);
-    } catch (err) {
-      Log.e(TAG, "open uri file failed err:" + err)
-      return null;
-    }
-    if (inputFile == null) {
-      return null;
-    }
     const uuid = util.generateRandomUUID();
     if (!context) {
       return
@@ -605,16 +722,37 @@ class FileUtils {
         }
       }
       const outputFilePath = targetDirectoryPath + "/" + outputFileName + extension;
-      const outputFile = fs.openSync(outputFilePath, fs.OpenMode.CREATE);
+
       try {
-        Log.i(TAG, "copyFileSync inputFile fd:" + inputFile.fd + " outputFile fd:" + outputFile.fd);
-        fs.copyFileSync(inputFile.fd, outputFilePath);
+        let progressListener: fs.ProgressListener = (progress: fs.Progress) => {
+          console.info(`progressSize: ${progress.processedSize}, totalSize: ${progress.totalSize}`);
+          pmProgressHandler?.notify(progress.processedSize/progress.totalSize,PMProgressState.Loading);
+        };
+        let copyOption: fs.CopyOptions = {
+          "progressListener" : progressListener
+        }
+
+        let srcDirUriLocal: string = fileUri.getUriFromPath(inputFilePath);
+        let dstDirUriLocal: string = fileUri.getUriFromPath(outputFilePath);
+
+        fs.copy(uri, dstDirUriLocal, copyOption, (err: BusinessError) => {
+          if (err) {
+            console.error(`Failed to copy. Code: ${err.code}, message: ${err.message}`);
+            pmProgressHandler?.notify(0.0,PMProgressState.Failed);
+            return;
+          }
+          console.info("Succeeded in copying.");
+          pmProgressHandler?.notify(100.0,PMProgressState.Success);
+          let filepath =
+            result.success(outputFilePath);
+        })
       } catch (err) {
-        Log.e(TAG, "copyFileSync failed err:" + err);
+        console.error(TAG, "copyFile failed err:" + err);
+        result.error("copy file error",inputFilePath,null);
         return null;
       } finally {
-        fs.closeSync(inputFile);
-        fs.closeSync(outputFile);
+        //fs.closeSync(inputFile);
+        //fs.closeSync(outputFile);
       }
       return outputFilePath;
     }

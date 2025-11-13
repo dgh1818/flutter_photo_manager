@@ -23,6 +23,7 @@ export default class PhotoManagerPlugin extends HandlerBase implements FlutterPl
   private channel: MethodChannel | null = null;
   private static _context: Context | null = null;
   private static _uiContext: common.UIAbilityContext | null = null;
+  private static _binding:FlutterPluginBinding | null = null;
 
   static get uiContext(): common.UIAbilityContext | null {
     return PhotoManagerPlugin._uiContext;
@@ -34,6 +35,10 @@ export default class PhotoManagerPlugin extends HandlerBase implements FlutterPl
 
   get uiContext(): common.UIAbilityContext | null {
     return PhotoManagerPlugin._uiContext;
+  }
+
+  static get binding(): FlutterPluginBinding | null {
+    return PhotoManagerPlugin._binding;
   }
 
   private static _showLog: boolean = true;

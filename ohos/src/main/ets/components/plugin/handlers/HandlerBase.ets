@@ -2,6 +2,10 @@ import { common } from '@kit.AbilityKit';
 import { MethodCall } from '@ohos/flutter_ohos';
 import { MethodResult } from '@ohos/flutter_ohos/src/main/ets/plugin/common/MethodChannel';
 import PhotoManagerPlugin from '../PhotoManagerPlugin';
+import {
+  FlutterPlugin,
+  FlutterPluginBinding
+} from '@ohos/flutter_ohos/src/main/ets/embedding/engine/plugins/FlutterPlugin';
 
 export class HandlerBase {
   get uiContext(): common.UIAbilityContext | null {
@@ -10,6 +14,10 @@ export class HandlerBase {
 
   get context(): common.Context | null {
     return PhotoManagerPlugin.uiContext;
+  }
+
+  get getPluginBinding():FlutterPluginBinding | null {
+    return PhotoManagerPlugin.binding;
   }
 
   get showLog(): boolean {

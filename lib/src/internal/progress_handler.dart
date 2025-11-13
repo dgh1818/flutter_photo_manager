@@ -21,7 +21,7 @@ class PMProgressHandler {
   /// Throws an error if used on a platform other than iOS or macOS.
   PMProgressHandler() : _channelIndex = _incrementalIndex {
     assert(
-      Platform.isIOS || Platform.isMacOS,
+      Platform.isIOS || Platform.isMacOS || Platform.isOhos,
       '$runtimeType should only be used on iOS or macOS.',
     );
     _channel = OptionalMethodChannel(
