@@ -92,16 +92,9 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
                       let outputFilePath = targetDirectoryPath  + outputFileName + extension;
                       console.error("enter moving photo success:" + outputFilePath);
                       // 等待 movingPhoto 写出视频资源
-                      let movingPhotoUri = movingPhoto.getUri();
+                      await movingPhoto.requestContent(photoAccessHelper.ResourceType.VIDEO_RESOURCE, outputFilePath);
                       let index = args.get('progressHandler') as number;
-                      if (index!=undefined) {
-                        let pmProgressHandler = new PMProgressHandler(PhotoManagerPlugin.binding!,index);
-                        FileUtils.getPathFromUri(this.uiContext, result,movingPhotoUri,undefined,pmProgressHandler);
-                      } else {
-                        FileUtils.getPathFromUri(this.uiContext, result,movingPhotoUri,undefined);
-                      }
-                      //console.error("get moving photo success:" + outputFilePath);
-                      //result.success(outputFilePath);
+                      result.success(outputFilePath);
                     }
                   } catch (err) {
                     result.error("live photo error",err,null)
@@ -120,9 +113,9 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
             let index = args.get('progressHandler') as number;
             if (index!=undefined) {
               let pmProgressHandler = new PMProgressHandler(PhotoManagerPlugin.binding!,index);
-              let realPath = FileUtils.getPathFromUri(this.uiContext, result,photoAsset.uri,undefined,pmProgressHandler);
+              FileUtils.getPathFromUri(this.uiContext, result,photoAsset.uri,undefined,pmProgressHandler);
             } else {
-              let realPath = FileUtils.getPathFromUri(this.uiContext, result,photoAsset.uri);
+              FileUtils.getPathFromUri(this.uiContext, result,photoAsset.uri);
             }
           }
           else {
@@ -731,8 +724,6 @@ class FileUtils {
         let copyOption: fs.CopyOptions = {
           "progressListener" : progressListener
         }
-
-        let srcDirUriLocal: string = fileUri.getUriFromPath(inputFilePath);
         let dstDirUriLocal: string = fileUri.getUriFromPath(outputFilePath);
 
         fs.copy(uri, dstDirUriLocal, copyOption, (err: BusinessError) => {
