@@ -68,6 +68,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           console.error("enter get moving photo")
 
           try {
+            const uuid = util.generateRandomUUID();
             await photoAccessHelper.MediaAssetManager.requestMovingPhoto(
               this.uiContext,
               photoAsset,
@@ -81,7 +82,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
                         fs.mkdirSync(this.uiContext!.cacheDir + "/movingPhoto");
                       }
 
-                      const targetDirectoryPath = this.uiContext!.cacheDir + "/movingPhoto/";
+                      const targetDirectoryPath = this.uiContext!.cacheDir + "/movingPhoto/" + uuid + "/";
                       //console.error(" targetDirectoryPat is " + targetDirectoryPath)
                       let uri = new fileUri.FileUri(id);
 
@@ -730,6 +731,7 @@ class FileUtils {
           if (err) {
             console.error(`Failed to copy. Code: ${err.code}, message: ${err.message}`);
             pmProgressHandler?.notify(0.0,PMProgressState.Failed);
+            result.error("copy file error",inputFilePath,null);
             return;
           }
           console.info("Succeeded in copying.");
