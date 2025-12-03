@@ -7,6 +7,7 @@ import { MethodCall } from '@ohos/flutter_ohos';
 import { HandlerBase, MethodCallHandlerBase } from './HandlerBase';
 import { PermissionHandler } from './PermissionHandler';
 import PhotoManagerPlugin from '../PhotoManagerPlugin';
+import { AlbumHandler } from './AlbumHandler';
 
 export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
@@ -50,6 +51,44 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
         await this._save(args, result, photoAccessHelper.PhotoType.VIDEO, buff);
       }
         break;
+      case 'saveLivePhoto': {
+        let args: Map<string, ESObject> = call.args;
+        let imagePath = args.get('imagePath') as string;
+        let videoPath = args.get('videoPath') as string;
+        let title = args.get("title") as string;
+        let desc = args.get("desc") as string;
+        let relativePath = args.get("relativePath") as string;
+        console.error("saveLivePhoto imagePath:"+imagePath+",videoPath:"+videoPath+",title:"+title+",desc:"+desc+",relativePath:"+relativePath);
+
+        let asset = await AlbumHandler.saveLivePhoto(imagePath,videoPath,title,desc);
+        if(asset==undefined) {
+          console.error("saveLivePhoto failed");
+          result.error("saveLivePhoto failed","failed",null);
+          return false;
+        }
+        console.error("saveLivePhoto success:"+asset.uri);
+        let uri = asset.uri as string;
+        let media_type = PhotoAssetHandler.getAssetMember(asset, photoAccessHelper.PhotoKeys.PHOTO_TYPE) as number;
+        let subtype = 3;
+        console.error("before return");
+
+        
+
+        result.success(new Map<string, ESObject>(
+          [
+            ['id', uri],
+            // IMAGE 1  VIDEO 2
+            ['type', media_type],
+            ['title', title],
+            ['subtype', subtype],
+          ]
+        ))
+        console.error("after return");
+        return true;
+
+        break;
+
+      }
       default:
         return false;
     }

@@ -718,7 +718,7 @@ mixin IosPlugin on BasePlugin {
     String? desc,
     String? relativePath,
   }) async {
-    assert(Platform.isIOS || Platform.isMacOS);
+    assert(Platform.isIOS || Platform.isMacOS || Platform.isOhos);
     if (!imageFile.existsSync()) {
       throw ArgumentError('The image file does not exists.');
     }

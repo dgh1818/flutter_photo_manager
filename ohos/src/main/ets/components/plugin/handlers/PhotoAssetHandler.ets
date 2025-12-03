@@ -514,30 +514,38 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     // mimeType: data['mimeType'] as String?,
     let uri = photoAsset.uri;
     // this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.URI);
-    let media_type = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.PHOTO_TYPE);
-    // let display_name = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DISPLAY_NAME);
+    let media_type = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.PHOTO_TYPE) as number;
+    let display_name = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DISPLAY_NAME) as string;
     // let size = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.SIZE);
-    let date_added = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_ADDED);
+    let date_added = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_ADDED) as number;
     let date_modified = photoAsset.get(photoAccessHelper.PhotoKeys.DATE_MODIFIED) as number;
     let duration: number = (PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DURATION) as number) ;
-    let width = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.WIDTH);
-    let height = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.HEIGHT);
-    // let date_taken = this.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DATE_TAKEN);
-    let orientation = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.ORIENTATION);
-    let is_favorite = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.FAVORITE);
-    let title = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DISPLAY_NAME);
+    let width = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.WIDTH) as number;
+    let height = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.HEIGHT) as number;
+    let orientation = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.ORIENTATION) as number;
+    let is_favorite = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.FAVORITE) as number;
+    let title = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DISPLAY_NAME) as string;
     let subtype = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.PHOTO_SUBTYPE) as number;
+
+    const displayName = PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.DISPLAY_NAME) as string;
+    const dot = displayName.lastIndexOf('.');
+    const ext = dot >= 0 && dot < displayName.length - 1 ? displayName.substring(dot + 1).toLowerCase() : '';
+    const mimeType = media_type == photoAccessHelper.PhotoType.IMAGE
+      ? `image/${ext || 'jpeg'}`
+      : `video/${ext || 'mp4'}`;
+    
+    console.error("finish to map");
 
     return new Map<string, ESObject>(
       [
         ['id', uri],
         // IMAGE 1  VIDEO 2
-        ['type', photoAsset.photoType],
+        ['type', media_type],
         ['width', width],
         ['height', height],
         ['duration', Math.ceil(duration / 1000)],
         ['orientation', orientation],
-        ['favorite', is_favorite == 1],
+        ['favorite', is_favorite==1?true:false],
         // dart 会根据 title 获取图片类型，所以这里返回文件路径比较好
         // 鸿蒙的 tilte 不带扩展后缀
         ['title', title],
@@ -549,7 +557,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         // ['lat', 1.0],
         // longitude: data['lng'] as double?,
         // ['lng', 1.0],
-        ['mimeType', media_type?.toString()],
+        ['mimeType', mimeType],
         ['subtype', subtype],
       ]
     );

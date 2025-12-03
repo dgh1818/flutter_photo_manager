@@ -11,6 +11,7 @@ import { AsyncCallback } from '@ohos.base';
 import { MapUtils } from '../utils/MapUtils';
 import { fileUri, hash } from '@kit.CoreFileKit';
 import { fileUriService } from '@kit.ScenarioFusionKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 
 export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
@@ -105,6 +106,43 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
     }
 
     return true;
+  }
+
+  static async saveLivePhoto(imagePath:string,videoPath:string,title:string,desc:string):Promise<photoAccessHelper.PhotoAsset|undefined>{
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    try {
+      let assetChangeRequest: photoAccessHelper.MediaAssetChangeRequest =
+        photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(PhotoManagerPlugin.uiContext,
+          photoAccessHelper.PhotoType.IMAGE, "jpg", {
+            title: title,
+            subtype: photoAccessHelper.PhotoSubtype.MOVING_PHOTO
+          });
+      let srcImageFileUris: Array<string> = [imagePath];
+      let srcVideoFileUris: Array<string> = [videoPath];
+      assetChangeRequest.addResource(photoAccessHelper.ResourceType.IMAGE_RESOURCE, srcImageFileUris[0]);
+      assetChangeRequest.addResource(photoAccessHelper.ResourceType.VIDEO_RESOURCE, srcVideoFileUris[0]);
+      await phAccessHelper.applyChanges(assetChangeRequest);
+      console.error("save LivePhoto applyChanges success");
+
+      try {
+        let livingPhotoAsset = assetChangeRequest.getAsset();
+        return livingPhotoAsset;
+      } catch (e) {
+        let error = e as BusinessError;
+        console.error("assetChangeRequest.getAsset() failed" + error.message);
+        return undefined;
+      }
+
+      // albumChangeRequest.addAssets([livingPhotoAsset]);
+      // console.error("save LivePhoto asset added to albumChangeRequest");
+      // await phAccessHelper.applyChanges(albumChangeRequest);
+      // console.error("save LivePhoto applyChanges to album success");
+
+    } catch (e) {
+      let error = e as BusinessError
+      console.error("save LivePhoto Error:" + error.message);
+      return undefined;
+    }
   }
 
   static async getAlbum(id: string): Promise<photoAccessHelper.Album | null> {
