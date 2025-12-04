@@ -676,7 +676,7 @@ class PhotoManagerPlugin with BasePlugin, IosPlugin, AndroidPlugin, OhosPlugin {
     int subtype = 0,
     PMDarwinAVFileType? darwinFileType,
   }) async {
-    if (Platform.isIOS || Platform.isMacOS) {
+    if (Platform.isIOS || Platform.isMacOS || Platform.isOhos) {
       return await _channel.invokeMethod(
         PMConstants.mIsLocallyAvailable,
         <String, dynamic>{
