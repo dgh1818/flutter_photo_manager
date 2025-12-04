@@ -79,6 +79,8 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
             ['id', uri],
             // IMAGE 1  VIDEO 2
             ['type', media_type],
+            ['width', 0],
+            ['height', 0],
             ['title', title],
             ['subtype', subtype],
           ]
