@@ -81,6 +81,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
                       }
 
                       const targetDirectoryPath = this.uiContext!.cacheDir + "/movingPhoto/" + uuid + "/";
+                      fs.mkdirSync(this.uiContext!.cacheDir + "/movingPhoto/"+ uuid);
                       //console.error(" targetDirectoryPat is " + targetDirectoryPath)
                       let uri = new fileUri.FileUri(id);
 
@@ -553,6 +554,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
 
   static async getPhotoAsset(id: string): Promise<photoAccessHelper.PhotoAsset | null> {
     if (!(await PermissionHandler.permissionReadCheck())) {
+      console.error("no read permission");
       return null;
     }
     let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
