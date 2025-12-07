@@ -90,10 +90,19 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
                       const outputFileName = inputFilePathSplits[0];
                       let extension: string = ".mp4";
                       let outputFilePath = targetDirectoryPath + outputFileName + extension;
-                      console.error("enter moving photo success:" + outputFilePath);
+                      
                       // 等待 movingPhoto 写出视频资源
-                      await movingPhoto.requestContent(photoAccessHelper.ResourceType.VIDEO_RESOURCE, outputFilePath);
+                      try {
+                        await movingPhoto.requestContent(photoAccessHelper.ResourceType.VIDEO_RESOURCE, outputFilePath);
+                      }
+                      catch (e) {
+                        let error = e as BusinessError;
+                        console.error("requestContent video error: " + error.message);
+                        //return;
+                      }
                       let index = args.get('progressHandler') as number;
+                      let isSuccess = fs.accessSync(outputFilePath);
+                      console.error("outputFilePath is " + outputFilePath + " isSuccess:" + isSuccess);
                       result.success(outputFilePath);
                     }
                   } catch (err) {
