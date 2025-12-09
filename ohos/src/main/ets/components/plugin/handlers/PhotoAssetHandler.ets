@@ -723,6 +723,7 @@ class FileUtils {
         }
       }
       const outputFilePath = targetDirectoryPath + "/" + outputFileName + extension;
+      let isLocal = true;
 
       try {
         let progressListener: fs.ProgressListener = (progress: fs.Progress) => {
@@ -733,6 +734,7 @@ class FileUtils {
           "progressListener": progressListener
         }
         let dstDirUriLocal: string = fileUri.getUriFromPath(outputFilePath);
+        isLocal = fs.accessSync(uri);
 
         fs.copy(uri, dstDirUriLocal, copyOption, (err: BusinessError) => {
           if (err) {
@@ -751,6 +753,9 @@ class FileUtils {
         result.error("copy file error", inputFilePath, null);
         return null;
       } finally {
+        if(!isLocal) {
+          fs.unlinkSync(uri);
+        }
         //fs.closeSync(inputFile);
         //fs.closeSync(outputFile);
       }
