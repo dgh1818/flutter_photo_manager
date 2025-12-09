@@ -196,9 +196,50 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
     if (!(await PermissionHandler.permissionReadCheck())) {
       return [];
     }
-    if (onlyAll) {
-      return [await AlbumHandler.getAllAlbum(RequestType.all)];
+    // if (onlyAll) {
+    //   return [await AlbumHandler.getAllAlbum(RequestType.all)];
+    // }
+
+    let assets_user: Array<photoAccessHelper.Album> = [];
+    let assets_system: Array<photoAccessHelper.Album> = [];
+
+
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    let fetchResult_user: photoAccessHelper.FetchResult<photoAccessHelper.Album> =
+      await phAccessHelper.getAlbums(photoAccessHelper.AlbumType.USER, photoAccessHelper.AlbumSubtype.ANY);
+    let fetchResult_sysytem: photoAccessHelper.FetchResult<photoAccessHelper.Album> =
+      await phAccessHelper.getAlbums(photoAccessHelper.AlbumType.SYSTEM, photoAccessHelper.AlbumSubtype.ANY);
+    //let album: photoAccessHelper.Album = await fetchResult.getFirstObject();
+    let iter: number = 0;
+    // await fetchResult.getFirstObject();
+    // await fetchResult_sysytem.getFirstObject();
+
+    while (!fetchResult_user.isAfterLast()) {
+      let asset = await fetchResult_user.getNextObject()
+      assets_user.push(asset);
+      console.info('getAlbums' + asset.albumName);
+      iter++;
     }
+
+    while (!fetchResult_sysytem.isAfterLast()) {
+      let asset = await fetchResult_sysytem.getNextObject()
+      assets_system.push(asset);
+      console.info('getAlbums' + asset.albumName);
+      iter++;
+    }
+
+    if (onlyAll) {
+      return assets_system;
+    }
+
+    if(hasAll) {
+      let totalAlbum:Array<photoAccessHelper.Album> = [];
+      totalAlbum.push(...assets_system)
+      totalAlbum.push(...assets_user);
+      return totalAlbum;
+    }
+
+    return assets_user;
 
     let requestType: RequestType = new RequestType(args.get('type'));
 
@@ -214,13 +255,13 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
     // hasAll 返回的列表里有一个代表所有的相册
     // onlyAll 只返回这个代表所有的相册
     // 在鸿蒙这边 这个相册 应该是 从 system 这个类型里面获取到的相册的集合
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+
     let predicates: dataSharePredicates.DataSharePredicates = new dataSharePredicates.DataSharePredicates();
     let fetchOptions: photoAccessHelper.FetchOptions = {
       fetchColumns: [
-      // photoAccessHelper.AlbumKeys.URI,
-      // photoAccessHelper.AlbumKeys.ALBUM_NAME,
-      //...Object.keys(photoAccessHelper.PhotoKeys),
+        // photoAccessHelper.AlbumKeys.URI,
+        // photoAccessHelper.AlbumKeys.ALBUM_NAME,
+        //...Object.keys(photoAccessHelper.PhotoKeys),
       ],
       predicates: predicates
     };
@@ -249,11 +290,31 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
   }
 
   static albumToMap(album: photoAccessHelper.AbsAlbum): Map<string, ESObject> {
+    let name = album.albumName ?? '';
+    const hasName = name.trim().length > 0;
+    if (!hasName) {
+      const subtype = album.albumSubtype;
+      switch (subtype) {
+        case photoAccessHelper.AlbumSubtype.FAVORITE:
+          name = 'Favorites';
+          break;
+        case photoAccessHelper.AlbumSubtype.VIDEO:
+          name = 'Videos';
+          break;
+        case photoAccessHelper.AlbumSubtype.IMAGE:
+          name = 'Images';
+          break;
+        default:
+          name = '';
+          break;
+      }
+    }
+
     return new Map<string, ESObject>([
       ['modified', 1],
       // file://media/PhotoAlbum/2
       ['id', album.albumUri],
-      ['name', album.albumName],
+      ['name', name],
       /// The type of the album.
       ///  * Android: Always be 1.
       ///  * iOS: 1 - Album, 2 - Folder.
@@ -263,7 +324,7 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
       ['ohosAlbumSubtype', album.albumSubtype],
       // ['albumTypeNameOhos', EnumUtils.getName(photoAccessHelper.AlbumType, album.albumType)],
       // ['albumSubtypeNameOhos', EnumUtils.getName(photoAccessHelper.AlbumSubtype, album.albumSubtype)],
-      ['isAll', (album instanceof AllAlbum) ? (album as AllAlbum).isAll : false],
+      ['isAll', (album.albumType == photoAccessHelper.AlbumType.SYSTEM) ? true : false],
     ]);
   }
 
