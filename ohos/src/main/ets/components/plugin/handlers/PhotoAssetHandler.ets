@@ -90,7 +90,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
                       const outputFileName = inputFilePathSplits[0];
                       let extension: string = ".mp4";
                       let outputFilePath = targetDirectoryPath + outputFileName + extension;
-                      
+
                       // 等待 movingPhoto 写出视频资源
                       try {
                         await movingPhoto.requestContent(photoAccessHelper.ResourceType.VIDEO_RESOURCE, outputFilePath);
@@ -673,8 +673,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     let asset = await assets.getFirstObject();
 
     let position = asset.get(photoAccessHelper.PhotoKeys.POSITION) as photoAccessHelper.PositionType;
-    if (!(position == photoAccessHelper.PositionType.LOCAL) &&
-      !(position == photoAccessHelper.PositionType.LOCAL_AND_CLOUD)) {
+    if (position == photoAccessHelper.PositionType.CLOUD) {
       return false;
     } else {
       return true;
@@ -727,14 +726,15 @@ class FileUtils {
 
       try {
         let progressListener: fs.ProgressListener = (progress: fs.Progress) => {
-          console.info(`progressSize: ${progress.processedSize}, totalSize: ${progress.totalSize}`);
+          //console.info(`progressSize: ${progress.processedSize}, totalSize: ${progress.totalSize}`);
           pmProgressHandler?.notify(progress.processedSize / progress.totalSize, PMProgressState.Loading);
         };
         let copyOption: fs.CopyOptions = {
           "progressListener": progressListener
         }
         let dstDirUriLocal: string = fileUri.getUriFromPath(outputFilePath);
-        isLocal = fs.accessSync(uri);
+        console.error(TAG, `copyFile from ${uri} to ${dstDirUriLocal}`);
+        //isLocal = fs.accessSync(uri);
 
         fs.copy(uri, dstDirUriLocal, copyOption, (err: BusinessError) => {
           if (err) {
@@ -754,7 +754,7 @@ class FileUtils {
         return null;
       } finally {
         if(!isLocal) {
-          fs.unlinkSync(uri);
+          //fs.unlinkSync(uri);
         }
         //fs.closeSync(inputFile);
         //fs.closeSync(outputFile);

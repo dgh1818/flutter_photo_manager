@@ -58,14 +58,14 @@ export class PermissionHandler extends HandlerBase implements MethodCallHandlerB
   }
 
   static async permissionReadCheck(): Promise<boolean> {
-    return PermissionHandler.permissionCheck(['ohos.permission.READ_IMAGEVIDEO']);
+    return PermissionHandler.permissionCheck(['ohos.permission.READ_IMAGEVIDEO',"ohos.permission.MEDIA_LOCATION"]);
   }
 
   static async permissionWriteCheck(): Promise<boolean> {
     return PermissionHandler.permissionCheck(['ohos.permission.WRITE_IMAGEVIDEO']);
   }
 
-  static async permissionCheck(permissions: Array<Permissions> = ['ohos.permission.READ_IMAGEVIDEO', 'ohos.permission.WRITE_IMAGEVIDEO']): Promise<boolean> {
+  static async permissionCheck(permissions: Array<Permissions> = ['ohos.permission.READ_IMAGEVIDEO', 'ohos.permission.WRITE_IMAGEVIDEO',"ohos.permission.MEDIA_LOCATION"]): Promise<boolean> {
     if (permissions.length == 0 || PermissionHandler.ignoreCheck) {
       // result.error('101', 'permissions is empty', 'make sure you pass the permissions');
       return true;

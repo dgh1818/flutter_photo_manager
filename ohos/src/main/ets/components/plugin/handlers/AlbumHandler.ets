@@ -363,8 +363,7 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
 
       let position = current_asset.get(photoAccessHelper.PhotoKeys.POSITION) as photoAccessHelper.PositionType;
       //console.error('7:6 success' + current_asset.uri);
-      if (!(position == photoAccessHelper.PositionType.LOCAL) &&
-        !(position == photoAccessHelper.PositionType.LOCAL_AND_CLOUD)) {
+      if (position == photoAccessHelper.PositionType.CLOUD) {
         continue;
       }
 
