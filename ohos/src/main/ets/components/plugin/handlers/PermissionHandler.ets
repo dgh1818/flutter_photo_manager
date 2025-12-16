@@ -71,6 +71,11 @@ export class PermissionHandler extends HandlerBase implements MethodCallHandlerB
       return true;
     }
 
+    if (!PhotoManagerPlugin.uiContext) {
+      console.warn('permissionCheck skip: uiContext is null (no UI context available)');
+      return false;
+    }
+
     let atManager = abilityAccessCtrl.createAtManager();
     /// dart
     /// The user has not set the app’s authorization status.
@@ -100,14 +105,19 @@ export class PermissionHandler extends HandlerBase implements MethodCallHandlerB
 
     /// Invalid request.
     /// invalid(2)
-    let data: PermissionRequestResult = await atManager.requestPermissionsFromUser(PhotoManagerPlugin.uiContext!, permissions,);
-    let grantStatus: Array<number> = data.authResults;
-    let length: number = grantStatus.length;
-    for (let i = 0; i < length; i++) {
-      if (grantStatus[i] != 0) {
-        return false;
+    try {
+      let data: PermissionRequestResult = await atManager.requestPermissionsFromUser(PhotoManagerPlugin.uiContext!, permissions,);
+      let grantStatus: Array<number> = data.authResults;
+      let length: number = grantStatus.length;
+      for (let i = 0; i < length; i++) {
+        if (grantStatus[i] != 0) {
+          return false;
+        }
       }
+      return true;
+    } catch (err) {
+      console.error(`requestPermissionsFromUser failed: ${err}`);
+      return false;
     }
-    return true;
   }
 }
