@@ -9,6 +9,7 @@ import MethodChannel, {
 import MethodCall from '@ohos/flutter_ohos/src/main/ets/plugin/common/MethodCall';
 import common from '@ohos.app.ability.common';
 import { AbilityAware, AbilityPluginBinding } from '@ohos/flutter_ohos';
+import fs from '@ohos.file.fs';
 
 import PhotoManagerNotifyPlugin from './PhotoManagerNotifyPlugin';
 import { SaveHandler } from './handlers/SaveHandler';
@@ -95,6 +96,10 @@ export default class PhotoManagerPlugin extends HandlerBase implements FlutterPl
       case 'log':
         PhotoManagerPlugin._showLog = call.args;
         break;
+      case 'clearFileCache':
+        this.clearFileCache();
+        result.success(null);
+        break;
       case 'cancelCacheRequests':
         result.success(null);
         break;
@@ -114,6 +119,50 @@ export default class PhotoManagerPlugin extends HandlerBase implements FlutterPl
         break;
     }
   }
+
+  private clearFileCache(): void {
+    const appContext = this.uiContext?.getApplicationContext() ?? PhotoManagerPlugin.context;
+    if (!appContext) {
+      return;
+    }
+
+    const cacheRoot = `${appContext.cacheDir}/photo_manager`;
+    try {
+      if (fs.accessSync(cacheRoot)) {
+        this.deletePath(cacheRoot);
+      }
+    } catch (_) {
+      // ignore
+    }
+
+    this.deletePath(`${appContext.cacheDir}/originalPhoto`);
+    this.deletePath(`${appContext.cacheDir}/movingPhoto`);
+  }
+
+  private deletePath(path: string): void {
+    try {
+      if (!fs.accessSync(path)) {
+        return;
+      }
+    } catch (_) {
+      return;
+    }
+
+    try {
+      const stat = fs.statSync(path);
+      if (stat.isDirectory()) {
+        const entries = fs.listFileSync(path);
+        for (let i = 0; i < entries.length; i++) {
+          this.deletePath(`${path}/${entries[i]}`);
+        }
+        if (fs.accessSync(path)) {
+          fs.rmdirSync(path);
+        }
+      } else {
+        fs.unlinkSync(path);
+      }
+    } catch (_) {
+      // Best-effort cleanup.
+    }
+  }
 }
-
-

@@ -130,7 +130,16 @@ class FileUtils {
       return
     }
     {
-      const targetDirectoryPath = context.cacheDir + "/" + uuid;
+      const appContext = PhotoManagerPlugin.uiContext?.getApplicationContext() ?? PhotoManagerPlugin.context;
+      if (!appContext) {
+        return null;
+      }
+
+      const cacheRoot = `${appContext.cacheDir}/photo_manager`;
+      if (!fs.accessSync(cacheRoot)) {
+        fs.mkdirSync(cacheRoot);
+      }
+      const targetDirectoryPath = `${cacheRoot}/${uuid}`;
       try {
         fs.mkdirSync(targetDirectoryPath);
         let targetDir = fs.openSync(targetDirectoryPath);

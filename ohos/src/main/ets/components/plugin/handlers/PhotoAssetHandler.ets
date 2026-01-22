@@ -76,12 +76,23 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
                 onDataPrepared: async (movingPhoto: photoAccessHelper.MovingPhoto) => {
                   try {
                     if (movingPhoto) {
-                      if (!fs.accessSync(this.uiContext!.cacheDir + "/movingPhoto")) {
-                        fs.mkdirSync(this.uiContext!.cacheDir + "/movingPhoto");
+                      const appContext = PhotoManagerPlugin.uiContext?.getApplicationContext() ?? PhotoManagerPlugin.context;
+                      if (!appContext) {
+                        result.error("cache dir error", "cache root is null", null);
+                        return;
                       }
 
-                      const targetDirectoryPath = this.uiContext!.cacheDir + "/movingPhoto/" + uuid + "/";
-                      fs.mkdirSync(this.uiContext!.cacheDir + "/movingPhoto/"+ uuid);
+                      const cacheRoot = `${appContext.cacheDir}/photo_manager`;
+                      if (!fs.accessSync(cacheRoot)) {
+                        fs.mkdirSync(cacheRoot);
+                      }
+                      const movingRoot = `${cacheRoot}/movingPhoto`;
+                      if (!fs.accessSync(movingRoot)) {
+                        fs.mkdirSync(movingRoot);
+                      }
+
+                      const targetDirectoryPath = `${movingRoot}/${uuid}/`;
+                      fs.mkdirSync(`${movingRoot}/${uuid}`);
                       //console.error(" targetDirectoryPat is " + targetDirectoryPath)
                       let uri = new fileUri.FileUri(id);
 
@@ -693,10 +704,20 @@ class FileUtils {
       return
     }
     {
-      if (!fs.accessSync(context.cacheDir + "/originalPhoto")) {
-        fs.mkdirSync(context.cacheDir + "/originalPhoto");
+      const appContext = PhotoManagerPlugin.uiContext?.getApplicationContext() ?? PhotoManagerPlugin.context;
+      if (!appContext) {
+        return null;
       }
-      const targetDirectoryPath = context.cacheDir + "/originalPhoto/" + uuid;
+
+      const cacheRoot = `${appContext.cacheDir}/photo_manager`;
+      if (!fs.accessSync(cacheRoot)) {
+        fs.mkdirSync(cacheRoot);
+      }
+      const originalRoot = `${cacheRoot}/originalPhoto`;
+      if (!fs.accessSync(originalRoot)) {
+        fs.mkdirSync(originalRoot);
+      }
+      const targetDirectoryPath = `${originalRoot}/${uuid}`;
       try {
         fs.mkdirSync(targetDirectoryPath);
         let targetDir = fs.openSync(targetDirectoryPath);

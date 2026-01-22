@@ -569,9 +569,6 @@ class PhotoManagerPlugin with BasePlugin, IosPlugin, AndroidPlugin, OhosPlugin {
   }
 
   Future<void> clearFileCache() async {
-    if (PlatformUtils.isOhos) {
-      return;
-    }
     return _channel.invokeMethod(PMConstants.mClearFileCache);
   }
 
