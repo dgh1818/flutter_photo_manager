@@ -47,8 +47,51 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
         // 'onlyAddPermission': true,
         let args: Map<string, ESObject> = call.args;
         let path: string = args.get('path');
-        let buff = await SaveHandler.getBuffFromPath(path);
-        await this._save(args, result, photoAccessHelper.PhotoType.VIDEO, buff);
+        if (!(await PermissionHandler.permissionWriteCheck())) {
+          result.error('no ohos.permission.WRITE_IMAGEVIDEO', '', '');
+        }
+
+        let title: string = args.get('title');
+        let extension: string = 'mp4';
+        if (title != undefined && title.includes('.')) {
+          const lastIndex = title.lastIndexOf('.');
+          if (lastIndex > 0 && lastIndex < title.length -1) {
+            extension = title.slice(lastIndex + 1);
+            title = title.slice(0, lastIndex);
+          }
+        }
+
+        try {
+          let createOptions: photoAccessHelper.CreateOptions = {};
+          if (title != undefined) {
+            createOptions = {
+              title: title,
+            };
+          }
+          let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(this.uiContext);
+          let assetChangeRequest: photoAccessHelper.MediaAssetChangeRequest =
+            photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(this.uiContext, photoAccessHelper.PhotoType.VIDEO, extension, createOptions);
+          assetChangeRequest.addResource(photoAccessHelper.ResourceType.VIDEO_RESOURCE, path);
+          await phAccessHelper.applyChanges(assetChangeRequest);
+          let asset = assetChangeRequest.getAsset();
+          let assetUri = asset.uri;
+          let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(assetUri);
+          if (photoAsset != null) {
+            result.success(PhotoAssetHandler.photoAssetToMap(photoAsset));
+          } else {
+            if (PhotoManagerPlugin.showLog) {
+              console.info('can not find photo for now', assetUri, '');
+            }
+            result.error('can not find photo for now', assetUri, '');
+          }
+        } catch (error) {
+          let err: BusinessError = error as BusinessError;
+          console.error(`save failed: title=${title}, ext=${extension}, type=${photoAccessHelper.PhotoType.VIDEO}`);
+          if (PhotoManagerPlugin.showLog) {
+            console.info(err.code.toString(), err.message, err.stack);
+          }
+          result.error(err.code.toString(), err.message, err.stack);
+        }
       }
         break;
       case 'saveLivePhoto': {
@@ -70,10 +113,6 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
         let uri = asset.uri as string;
         let media_type = PhotoAssetHandler.getAssetMember(asset, photoAccessHelper.PhotoKeys.PHOTO_TYPE) as number;
         let subtype = 3;
-        console.error("before return");
-
-        
-
         result.success(new Map<string, ESObject>(
           [
             ['id', uri],
@@ -85,7 +124,6 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
             ['subtype', subtype],
           ]
         ))
-        console.error("after return");
         return true;
 
         break;
@@ -115,16 +153,17 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
       result.error('no ohos.permission.WRITE_IMAGEVIDEO', '', '');
     }
 
-    try {
-      let title: string = args.get('title');
-      let extension: string = photoType == photoAccessHelper.PhotoType.IMAGE ? 'jpg' : 'mp4';
-      if (title != undefined && title.includes('.')) {
-        const lastIndex = title.lastIndexOf('.');
-        if (lastIndex > 0 && lastIndex < title.length -1) {
-          extension = title.slice(lastIndex + 1);
-          title = title.slice(0, lastIndex);
-        }
+    let title: string = args.get('title');
+    let extension: string = photoType == photoAccessHelper.PhotoType.IMAGE ? 'jpg' : 'mp4';
+    if (title != undefined && title.includes('.')) {
+      const lastIndex = title.lastIndexOf('.');
+      if (lastIndex > 0 && lastIndex < title.length -1) {
+        extension = title.slice(lastIndex + 1);
+        title = title.slice(0, lastIndex);
       }
+    }
+
+    try {
       let createOptions: photoAccessHelper.CreateOptions = {};
       if (title != undefined) {
         createOptions = {
@@ -149,10 +188,13 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
       }
     } catch (error) {
       let err: BusinessError = error as BusinessError;
+      console.error(`save failed: title=${title}, ext=${extension}, type=${photoType}`);
       if (PhotoManagerPlugin.showLog) {
+        
         console.info(err.code.toString(), err.message, err.stack);
       }
       result.error(err.code.toString(), err.message, err.stack);
     }
   }
+
 }

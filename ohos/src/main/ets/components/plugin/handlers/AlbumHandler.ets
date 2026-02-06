@@ -111,9 +111,14 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
   static async saveLivePhoto(imagePath:string,videoPath:string,title:string,desc:string):Promise<photoAccessHelper.PhotoAsset|undefined>{
     let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
     try {
+      let extension = "jpg";
+      const lastIndex = imagePath.lastIndexOf('.');
+      if (lastIndex > 0 && lastIndex < imagePath.length - 1) {
+        extension = imagePath.slice(lastIndex + 1).toLowerCase();
+      }
       let assetChangeRequest: photoAccessHelper.MediaAssetChangeRequest =
         photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(PhotoManagerPlugin.uiContext,
-          photoAccessHelper.PhotoType.IMAGE, "jpg", {
+          photoAccessHelper.PhotoType.IMAGE, extension, {
             title: title,
             subtype: photoAccessHelper.PhotoSubtype.MOVING_PHOTO
           });
