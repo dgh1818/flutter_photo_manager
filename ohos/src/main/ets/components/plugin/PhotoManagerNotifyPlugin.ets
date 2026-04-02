@@ -55,7 +55,12 @@ export default class PhotoManagerNotifyPlugin implements FlutterPlugin, MethodCa
   }
 
   notify(start: boolean): boolean {
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(this.uiContext);
+    const context = this.uiContext ?? PhotoManagerPlugin.context;
+    if (!context) {
+      return false;
+    }
+
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
     try {
       if (start) {
         phAccessHelper.registerChange(photoAccessHelper.DefaultChangeUri.DEFAULT_PHOTO_URI, true, this._onCallback);

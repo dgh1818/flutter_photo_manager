@@ -11,8 +11,8 @@ import { AlbumHandler } from './AlbumHandler';
 
 export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
-    if (this.uiContext == null) {
-      result.error('100', `${call.method} : uiContext is null`, 'it should not be null');
+    if (this.context == null) {
+      result.error('100', `${call.method} : context is null`, 'it should not be null');
       return true;
     }
     switch (call.method) {
@@ -68,9 +68,9 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
               title: title,
             };
           }
-          let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(this.uiContext);
+          let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(this.context!);
           let assetChangeRequest: photoAccessHelper.MediaAssetChangeRequest =
-            photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(this.uiContext, photoAccessHelper.PhotoType.VIDEO, extension, createOptions);
+            photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(this.context!, photoAccessHelper.PhotoType.VIDEO, extension, createOptions);
           assetChangeRequest.addResource(photoAccessHelper.ResourceType.VIDEO_RESOURCE, path);
           await phAccessHelper.applyChanges(assetChangeRequest);
           let asset = assetChangeRequest.getAsset();
@@ -170,8 +170,8 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
           title: title,
         };
       }
-      let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(this.uiContext);
-      let assetChangeRequest: photoAccessHelper.MediaAssetChangeRequest = photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(this.uiContext, photoType, extension, createOptions);
+      let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(this.context!);
+      let assetChangeRequest: photoAccessHelper.MediaAssetChangeRequest = photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(this.context!, photoType, extension, createOptions);
       assetChangeRequest.addResource(photoType == photoAccessHelper.PhotoType.IMAGE ? photoAccessHelper.ResourceType.IMAGE_RESOURCE : photoAccessHelper.ResourceType.VIDEO_RESOURCE, buffer);
       await phAccessHelper.applyChanges(assetChangeRequest);
       let asset = assetChangeRequest.getAsset();

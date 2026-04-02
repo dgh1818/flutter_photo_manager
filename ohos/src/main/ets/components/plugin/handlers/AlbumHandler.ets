@@ -15,8 +15,8 @@ import { BusinessError } from '@kit.BasicServicesKit';
 
 export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
-    if (this.uiContext == null) {
-      result.error('100', `${call.method} : uiContext is null`, 'it should not be null');
+    if (this.context == null) {
+      result.error('100', `${call.method} : context is null`, 'it should not be null');
       return true;
     }
     switch (call.method) {
@@ -109,7 +109,13 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
   }
 
   static async saveLivePhoto(imagePath:string,videoPath:string,title:string,desc:string):Promise<photoAccessHelper.PhotoAsset|undefined>{
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    const context = PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
+    if (!context) {
+      console.warn('saveLivePhoto skip: context is null (no media context available)');
+      return undefined;
+    }
+
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
     try {
       let extension = "jpg";
       const lastIndex = imagePath.lastIndexOf('.');
@@ -117,7 +123,7 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
         extension = imagePath.slice(lastIndex + 1).toLowerCase();
       }
       let assetChangeRequest: photoAccessHelper.MediaAssetChangeRequest =
-        photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(PhotoManagerPlugin.uiContext,
+        photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(context,
           photoAccessHelper.PhotoType.IMAGE, extension, {
             title: title,
             subtype: photoAccessHelper.PhotoSubtype.MOVING_PHOTO
@@ -176,7 +182,11 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
       ],
       predicates: predicates
     };
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    const context = PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
+    if (!context) {
+      return null;
+    }
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
 
 
     let user: photoAccessHelper.FetchResult<photoAccessHelper.Album> = await phAccessHelper.getAlbums(photoAccessHelper.AlbumType.USER, photoAccessHelper.AlbumSubtype.ANY, fetchOptions);
@@ -209,7 +219,11 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
     let assets_system: Array<photoAccessHelper.Album> = [];
 
 
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    const context = PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
+    if (!context) {
+      return [];
+    }
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
     let fetchResult_user: photoAccessHelper.FetchResult<photoAccessHelper.Album> =
       await phAccessHelper.getAlbums(photoAccessHelper.AlbumType.USER, photoAccessHelper.AlbumSubtype.ANY);
     let fetchResult_sysytem: photoAccessHelper.FetchResult<photoAccessHelper.Album> =
@@ -356,7 +370,11 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
       predicates: predicates
     };
 
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    const context = PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
+    if (!context) {
+      return new AllAlbum(requestType, 0);
+    }
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
     let assets = await phAccessHelper.getAssets(options);
 
     let assetsPath:Array<string> = [];
@@ -382,7 +400,11 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
   }
 
   static async copyToAlbum(album: photoAccessHelper.Album, photoAsset: photoAccessHelper.PhotoAsset): Promise<void> {
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    const context = PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
+    if (!context) {
+      throw new Error('context is null');
+    }
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
     let albumChangeRequest = new photoAccessHelper.MediaAlbumChangeRequest(album);
     albumChangeRequest.addAssets([photoAsset]);
     await phAccessHelper.applyChanges(albumChangeRequest);
@@ -449,7 +471,11 @@ class AllAlbum implements photoAccessHelper.Album {
   isAll: boolean;
 
   async getAssets(options: photoAccessHelper.FetchOptions): Promise<photoAccessHelper.FetchResult<photoAccessHelper.PhotoAsset>> {
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    const context = PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
+    if (!context) {
+      throw new Error('context is null');
+    }
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
     if (!(this.requestType.containsImage() && this.requestType.containsVideo())) {
       if (this.requestType.containsImage()) {
         options.predicates.equalTo(photoAccessHelper.PhotoKeys.PHOTO_TYPE, photoAccessHelper.PhotoType.IMAGE);

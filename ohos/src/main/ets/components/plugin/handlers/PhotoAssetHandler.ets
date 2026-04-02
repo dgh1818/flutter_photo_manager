@@ -22,8 +22,8 @@ import { PMProgressState } from './PMProgressHandlerInterface';
 
 export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerBase {
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
-    if (this.uiContext == null) {
-      result.error('100', 'uiContext is null', 'it should not be null');
+    if (this.context == null) {
+      result.error('100', 'context is null', 'it should not be null');
       return true;
     }
     switch (call.method) {
@@ -68,7 +68,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           try {
             const uuid = util.generateRandomUUID();
             await photoAccessHelper.MediaAssetManager.requestMovingPhoto(
-              this.uiContext,
+              this.context!,
               photoAsset,
               { deliveryMode: photoAccessHelper.DeliveryMode.HIGH_QUALITY_MODE },
               {
@@ -135,9 +135,9 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
               console.error("getFullFile with progressHandler:" + index);
 
               let pmProgressHandler = new PMProgressHandler(PhotoManagerPlugin.binding!, index);
-              FileUtils.getPathFromUri(this.uiContext, result, photoAsset.uri, undefined, pmProgressHandler);
+              FileUtils.getPathFromUri(this.context, result, photoAsset.uri, undefined, pmProgressHandler);
             } else {
-              FileUtils.getPathFromUri(this.uiContext, result, photoAsset.uri);
+              FileUtils.getPathFromUri(this.context, result, photoAsset.uri);
             }
           } else {
             result.error(`${call.method} failed`, `not find asset by ${id}`, null);
@@ -151,22 +151,6 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         //option
         //type
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
-      }
-        break;
-      case 'getFullFileReadable': {
-        let args: Map<string, ESObject> = call.args;
-        let name: string = args.get('filename');
-        let modifyAt: number = args.get('modifyAt');
-
-        let photoAsset: photoAccessHelper.PhotoAsset | null =
-          await PhotoAssetHandler.getPhotoAssetReadable(name, modifyAt);
-
-        if (photoAsset != null) {
-          console.error('photoAsset.uri：' + photoAsset.uri);
-          let realPath = FileUtils.getPathFromUri(this.uiContext, result, photoAsset.uri);
-        } else {
-          result.error(`${call.method} failed`, `not find asset by ${name}`, null);
-        }
       }
         break;
       case 'getThumb': {
@@ -282,7 +266,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let ids: Array<string> = args.get('ids');
 
 
-        await photoAccessHelper.MediaAssetChangeRequest.deleteAssets(this.uiContext, ids);
+        await photoAccessHelper.MediaAssetChangeRequest.deleteAssets(this.context!, ids);
         // 从回收站里面彻底删除，系统接口，目前不支持
         // if (call.method == 'deleteWithIds') {
         //
@@ -577,7 +561,11 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
       console.error("no read permission");
       return null;
     }
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    const context = PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
+    if (!context) {
+      return null;
+    }
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
     let predicates: dataSharePredicates.DataSharePredicates = new dataSharePredicates.DataSharePredicates();
     predicates.equalTo(photoAccessHelper.PhotoKeys.URI, id);
     let fetchOptions: photoAccessHelper.FetchOptions = {
@@ -607,53 +595,15 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     return null;
   }
 
-  static async getPhotoAssetReadable(name: string, modifyAt: number): Promise<photoAccessHelper.PhotoAsset | null> {
-    if (!(await PermissionHandler.permissionReadCheck())) {
-      return null;
-    }
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
-    let predicates: dataSharePredicates.DataSharePredicates = new dataSharePredicates.DataSharePredicates();
-    // predicates.equalTo(photoAccessHelper.PhotoKeys.PositionType, photoAccessHelper.PositionType.LOCAL);
-    // predicates.equalTo(photoAccessHelper.PhotoKeys.PositionType, photoAccessHelper.PositionType.LOCAL_AND_CLOUD);
-    predicates.equalTo(photoAccessHelper.PhotoKeys.DISPLAY_NAME, name);
-    // .and()
-    // .equalTo(photoAccessHelper.PhotoKeys.DATE_MODIFIED_MS, modifyAt);
-
-    //TODO:恢复比较时间
-    let fetchOptions: photoAccessHelper.FetchOptions = {
-      fetchColumns: [
-        'width',
-        'height',
-        'duration',
-        'orientation',
-        'is_favorite',
-        'title',
-        'date_added',
-        'date_modified',
-        'media_type',
-        'size',
-        //...Object.keys(photoAccessHelper.PhotoKeys),
-      ],
-      predicates: predicates
-    };
-
-    let assets = await phAccessHelper.getAssets(fetchOptions);
-    if (assets.getCount() != 0) {
-
-      return await assets.getFirstObject();
-
-      // if(asset.PositionType == PositionType.LOCAL || asset.PositionType == PositionType.LOCAL_AND_CLOUD)
-      // return asset;
-    }
-    return null;
-
-  }
-
   static async isLocallyAvailable(id: string): Promise<Boolean> {
     if (!(await PermissionHandler.permissionReadCheck())) {
       return false;
     }
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(PhotoManagerPlugin.uiContext);
+    const context = PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
+    if (!context) {
+      return false;
+    }
+    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
     let predicates: dataSharePredicates.DataSharePredicates = new dataSharePredicates.DataSharePredicates();
     predicates.equalTo(photoAccessHelper.PhotoKeys.URI, id);
     let fetchOptions: photoAccessHelper.FetchOptions = {

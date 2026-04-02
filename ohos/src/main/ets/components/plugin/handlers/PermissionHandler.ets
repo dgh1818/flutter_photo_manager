@@ -6,15 +6,20 @@ import { Permissions, abilityAccessCtrl, Want, PermissionRequestResult } from '@
 
 export class PermissionHandler extends HandlerBase implements MethodCallHandlerBase {
   private static ignoreCheck: boolean = false;
+  private static readonly deniedPermissionState = 2;
+  private static readonly grantedPermissionState = 3;
+  private static readonly permissionGranted = 0;
 
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
-    if (this.context == null || this.uiContext == null) {
-      result.error('100', 'context and uiContext are null', 'They should not be null');
-      return true;
-    }
     switch (call.method) {
       case 'openSetting': {
-        let applicationInfo = this.context!.applicationInfo;
+        if (this.uiContext == null) {
+          console.warn('openSetting skip: uiContext is null');
+          result.success(false);
+          break;
+        }
+
+        let applicationInfo = this.uiContext.applicationInfo;
         let wantInfo: Want = {
           bundleName: 'com.huawei.hmos.settings',
           abilityName: 'com.huawei.hmos.settings.MainAbility',
@@ -23,8 +28,13 @@ export class PermissionHandler extends HandlerBase implements MethodCallHandlerB
             pushParams: applicationInfo.name
           }
         }
-        await this.uiContext!.startAbility(wantInfo);
-        result.success(true);
+        try {
+          await this.uiContext.startAbility(wantInfo);
+          result.success(true);
+        } catch (err) {
+          console.error(`openSetting failed: ${err}`);
+          result.success(false);
+        }
       }
         break;
       case 'requestPermissionExtend': {
@@ -32,12 +42,23 @@ export class PermissionHandler extends HandlerBase implements MethodCallHandlerB
         let ohosPermissions: Array<Permissions> = args.get('ohosPermissions');
 
         if (Array.isArray(ohosPermissions)) {
+          if (PermissionHandler.hasGrantedPermissions(ohosPermissions)) {
+            result.success(PermissionHandler.grantedPermissionState);
+            break;
+          }
+
+          if (!PhotoManagerPlugin.uiContext) {
+            console.warn('requestPermissionExtend skip: uiContext is null (no UI context available)');
+            result.success(PermissionHandler.deniedPermissionState);
+            break;
+          }
+
           let granted = await PermissionHandler.permissionCheck(ohosPermissions);
           if (granted) {
-            result.success(3);
+            result.success(PermissionHandler.grantedPermissionState);
           }
           else {
-            result.success(2);
+            result.success(PermissionHandler.deniedPermissionState);
           }
         } else {
           result.error('102', 'permissions is not List<String>', 'make sure you pass the right permissions');
@@ -71,8 +92,13 @@ export class PermissionHandler extends HandlerBase implements MethodCallHandlerB
       return true;
     }
 
+    // Query the current grant state first. This does not need a UI context.
+    if (PermissionHandler.hasGrantedPermissions(permissions)) {
+      return true;
+    }
+
     if (!PhotoManagerPlugin.uiContext) {
-      console.warn('permissionCheck skip: uiContext is null (no UI context available)');
+      console.warn('permissionCheck skip request: uiContext is null (no UI context available)');
       return false;
     }
 
@@ -110,13 +136,38 @@ export class PermissionHandler extends HandlerBase implements MethodCallHandlerB
       let grantStatus: Array<number> = data.authResults;
       let length: number = grantStatus.length;
       for (let i = 0; i < length; i++) {
-        if (grantStatus[i] != 0) {
+        if (grantStatus[i] != PermissionHandler.permissionGranted) {
           return false;
         }
       }
       return true;
     } catch (err) {
       console.error(`requestPermissionsFromUser failed: ${err}`);
+      return false;
+    }
+  }
+
+  private static hasGrantedPermissions(permissions: Array<Permissions>): boolean {
+    const context = PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
+    if (!context) {
+      return false;
+    }
+
+    try {
+      const tokenId = context.applicationInfo.accessTokenId;
+      if (!tokenId) {
+        return false;
+      }
+
+      const atManager = abilityAccessCtrl.createAtManager();
+      for (let i = 0; i < permissions.length; i++) {
+        if (atManager.checkAccessTokenSync(tokenId, permissions[i]) != PermissionHandler.permissionGranted) {
+          return false;
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn(`checkAccessTokenSync failed: ${err}`);
       return false;
     }
   }

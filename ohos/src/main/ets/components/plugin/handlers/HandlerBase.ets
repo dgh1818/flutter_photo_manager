@@ -13,7 +13,7 @@ export class HandlerBase {
   }
 
   get context(): common.Context | null {
-    return PhotoManagerPlugin.uiContext;
+    return PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
   }
 
   get getPluginBinding():FlutterPluginBinding | null {
