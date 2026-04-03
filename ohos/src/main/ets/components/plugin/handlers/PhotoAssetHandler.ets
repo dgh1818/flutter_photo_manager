@@ -7,15 +7,14 @@ import { MethodCall, MethodChannel } from '@ohos/flutter_ohos';
 import { RequestType } from '../types/RequestType';
 import { AlbumHandler } from './AlbumHandler';
 import { image } from '@kit.ImageKit';
-import fs, { ReadOptions, WriteOptions } from '@ohos.file.fs';
+import fs from '@ohos.file.fs';
 import { FilterOption } from '../filter/FilterOption';
 import { PermissionHandler } from './PermissionHandler';
 import common from '@ohos.app.ability.common';
 import util from '@ohos.util';
 import Log from '@ohos/flutter_ohos/src/main/ets/util/Log';
 
-import { fileUri, hash } from '@kit.CoreFileKit';
-import { fileUriService } from '@kit.ScenarioFusionKit';
+import { fileUri } from '@kit.CoreFileKit';
 import { PMProgressHandler } from './PMProgressHandler';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { PMProgressState } from './PMProgressHandlerInterface';
@@ -50,99 +49,16 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
       case 'getFullFile': {
         let args: Map<string, ESObject> = call.args;
         let id: string = args.get('id') as string;
-        let subtype: number = args.get('subtype') as number
-        // 'isOrigin': isOrigin,
-        let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
-
-        if (!photoAsset) {
-          result.error(`${call.method} failed`, `not find asset by ${id}`, null);
-          return false;
+        let isOrigin: boolean = args.get('isOrigin') as boolean;
+        let subtype: number = args.get('subtype') as number;
+        let pmProgressHandler: PMProgressHandler | undefined = undefined;
+        let index = args.get('progressHandler') as number;
+        if (index != undefined) {
+          console.error("getFullFile with progressHandler:" + index);
+          pmProgressHandler = new PMProgressHandler(PhotoManagerPlugin.binding!, index);
         }
 
-        let photoSubtype = photoAsset.get(photoAccessHelper.PhotoKeys.PHOTO_SUBTYPE).valueOf() as number;
-
-        if (photoSubtype == 3 && subtype == 3) { //Moving Photo
-          // 获取PhotoAsset对应的动态照片对象。
-          console.error("enter get moving photo")
-
-          try {
-            const uuid = util.generateRandomUUID();
-            await photoAccessHelper.MediaAssetManager.requestMovingPhoto(
-              this.context!,
-              photoAsset,
-              { deliveryMode: photoAccessHelper.DeliveryMode.HIGH_QUALITY_MODE },
-              {
-                // 把回调写成 async，这样内部可以 await requestContent
-                onDataPrepared: async (movingPhoto: photoAccessHelper.MovingPhoto) => {
-                  try {
-                    if (movingPhoto) {
-                      const appContext = PhotoManagerPlugin.uiContext?.getApplicationContext() ?? PhotoManagerPlugin.context;
-                      if (!appContext) {
-                        result.error("cache dir error", "cache root is null", null);
-                        return;
-                      }
-
-                      const cacheRoot = `${appContext.cacheDir}/photo_manager`;
-                      if (!fs.accessSync(cacheRoot)) {
-                        fs.mkdirSync(cacheRoot);
-                      }
-                      const movingRoot = `${cacheRoot}/movingPhoto`;
-                      if (!fs.accessSync(movingRoot)) {
-                        fs.mkdirSync(movingRoot);
-                      }
-
-                      const targetDirectoryPath = `${movingRoot}/${uuid}/`;
-                      fs.mkdirSync(`${movingRoot}/${uuid}`);
-                      //console.error(" targetDirectoryPat is " + targetDirectoryPath)
-                      let uri = new fileUri.FileUri(id);
-
-                      const inputFilePath = id.substring(id.lastIndexOf("/") + 1);
-                      const inputFilePathSplits = inputFilePath.split(".");
-                      const outputFileName = inputFilePathSplits[0];
-                      let extension: string = ".mp4";
-                      let outputFilePath = targetDirectoryPath + outputFileName + extension;
-
-                      // 等待 movingPhoto 写出视频资源
-                      try {
-                        await movingPhoto.requestContent(photoAccessHelper.ResourceType.VIDEO_RESOURCE, outputFilePath);
-                      }
-                      catch (e) {
-                        let error = e as BusinessError;
-                        console.error("requestContent video error: " + error.message);
-                        //return;
-                      }
-                      let index = args.get('progressHandler') as number;
-                      let isSuccess = fs.accessSync(outputFilePath);
-                      console.error("outputFilePath is " + outputFilePath + " isSuccess:" + isSuccess);
-                      result.success(outputFilePath);
-                    }
-                  } catch (err) {
-                    result.error("live photo error", err, null)
-                  }
-                },
-                // 可选：处理 onError
-              }
-            );
-          } catch (e) {
-            result.error("live photo error", e, null);
-            // requestMovingPhoto 本身同步抛错的情况
-
-          }
-        } else {
-          if (photoAsset != null) {
-            let index = args.get('progressHandler') as number;
-            if (index != undefined) {
-              console.error("getFullFile with progressHandler:" + index);
-
-              let pmProgressHandler = new PMProgressHandler(PhotoManagerPlugin.binding!, index);
-              FileUtils.getPathFromUri(this.context, result, photoAsset.uri, undefined, pmProgressHandler);
-            } else {
-              FileUtils.getPathFromUri(this.context, result, photoAsset.uri);
-            }
-          } else {
-            result.error(`${call.method} failed`, `not find asset by ${id}`, null);
-          }
-        }
+        await FileUtils.getFullSizeFileWithId(this.context, result, id, isOrigin, subtype, pmProgressHandler);
       }
         break;
       case 'getOriginBytes': {
@@ -164,24 +80,19 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let option: Map<string, ESObject> = args.get('option');
         let width: number = option.get('width');
         let height: number = option.get('height');
+        let resizeContentMode: number = option.get('resizeContentMode') as number;
         //option
         //type
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
         // this.photoAssets.get(id);
         if (photoAsset != null) {
-
-          let pixelMap: image.PixelMap;
-          if (width != undefined && height != undefined) {
-            pixelMap = await photoAsset.getThumbnail({
-              width: width,
-              height: height,
-            });
-          } else {
-            pixelMap = await photoAsset.getThumbnail({
-              width: 600,
-              height: 600,
-            });
-          }
+          const thumbnailSize = PhotoAssetHandler.makeThumbnailRequestSize(
+            photoAsset,
+            width,
+            height,
+            resizeContentMode,
+          );
+          let pixelMap: image.PixelMap = await photoAsset.getThumbnail(thumbnailSize);
           const imagePackerApi = image.createImagePacker();
 
           let format: string = 'image/jpeg';
@@ -486,6 +397,65 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     }
   }
 
+  private static getOrientedAssetSize(photoAsset: photoAccessHelper.PhotoAsset): Size {
+    const width = (PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.WIDTH) as number) || 1;
+    const height = (PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.HEIGHT) as number) || 1;
+    const orientation =
+      (PhotoAssetHandler.getAssetMember(photoAsset, photoAccessHelper.PhotoKeys.ORIENTATION) as number) || 0;
+    if (orientation == 90 || orientation == 270) {
+      return { width: height, height: width };
+    }
+    return { width: width, height: height };
+  }
+
+  private static makeAspectFitThumbnailSize(
+    requestWidth: number,
+    requestHeight: number,
+    photoAsset: photoAccessHelper.PhotoAsset,
+  ): Size {
+    const orientedSize = PhotoAssetHandler.getOrientedAssetSize(photoAsset);
+    let boundWidth = requestWidth != undefined && requestWidth > 0 ? requestWidth : 0;
+    let boundHeight = requestHeight != undefined && requestHeight > 0 ? requestHeight : 0;
+
+    if (boundWidth <= 0 && boundHeight <= 0) {
+      boundWidth = 600;
+      boundHeight = 600;
+    } else if (boundWidth <= 0) {
+      boundWidth = Math.round(boundHeight * orientedSize.width / orientedSize.height);
+    } else if (boundHeight <= 0) {
+      boundHeight = Math.round(boundWidth * orientedSize.height / orientedSize.width);
+    }
+
+    const scale = Math.min(boundWidth / orientedSize.width, boundHeight / orientedSize.height);
+    const width = Math.max(1, Math.round(orientedSize.width * scale));
+    const height = Math.max(1, Math.round(orientedSize.height * scale));
+    return { width: width, height: height };
+  }
+
+  private static makeThumbnailRequestSize(
+    photoAsset: photoAccessHelper.PhotoAsset,
+    requestWidth: number,
+    requestHeight: number,
+    resizeContentMode: number,
+  ): Size {
+    if (resizeContentMode == 1) {
+      const orientedSize = PhotoAssetHandler.getOrientedAssetSize(photoAsset);
+      let width = requestWidth != undefined && requestWidth > 0 ? requestWidth : orientedSize.width;
+      let height = requestHeight != undefined && requestHeight > 0 ? requestHeight : orientedSize.height;
+      if (width <= 0) {
+        width = 600;
+      }
+      if (height <= 0) {
+        height = 600;
+      }
+      return { width: width, height: height };
+    }
+
+    // OHOS getThumbnail has no content-mode parameter, so default to the iOS behavior (AspectFit)
+    // by fitting the request bounds against the asset's oriented dimensions.
+    return PhotoAssetHandler.makeAspectFitThumbnailSize(requestWidth, requestHeight, photoAsset);
+  }
+
   static photoAssetToMap(photoAsset: photoAccessHelper.PhotoAsset): Map<string, ESObject> {
     // this.photoAssets.set(photoAsset.uri, photoAsset);
     // typeInt: data['type'] as int,
@@ -646,91 +616,387 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
 const TAG = "FileUtils";
 
 class FileUtils {
-  static async getPathFromUri(context: common.Context | null, result: MethodResult, uri: string, defExtension?: string,
-    pmProgressHandler?: PMProgressHandler) {
-    Log.i(TAG, "getPathFromUri : " + uri);
-    const uuid = util.generateRandomUUID();
-    if (!context) {
-      return
+  static async getFullSizeFileWithId(context: common.Context | null, result: MethodResult, assetId: string,
+    isOrigin: boolean, subtype: number, pmProgressHandler?: PMProgressHandler): Promise<void> {
+    let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(assetId);
+    if (!photoAsset) {
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("getFullFile failed", `not find asset by ${assetId}`, null);
+      return;
     }
-    {
-      const appContext = PhotoManagerPlugin.uiContext?.getApplicationContext() ?? PhotoManagerPlugin.context;
-      if (!appContext) {
-        return null;
-      }
 
-      const cacheRoot = `${appContext.cacheDir}/photo_manager`;
-      if (!fs.accessSync(cacheRoot)) {
-        fs.mkdirSync(cacheRoot);
-      }
-      const originalRoot = `${cacheRoot}/originalPhoto`;
-      if (!fs.accessSync(originalRoot)) {
-        fs.mkdirSync(originalRoot);
-      }
-      const targetDirectoryPath = `${originalRoot}/${uuid}`;
-      try {
-        fs.mkdirSync(targetDirectoryPath);
-        let targetDir = fs.openSync(targetDirectoryPath);
-        Log.i(TAG, "mkdirSync success targetDirectoryPath:" + targetDirectoryPath + " fd: " + targetDir.fd);
-        fs.closeSync(targetDir);
-      } catch (err) {
-        Log.e(TAG, "mkdirSync failed err:" + err);
-        return null;
-      }
+    let photoSubtype = photoAsset.get(photoAccessHelper.PhotoKeys.PHOTO_SUBTYPE).valueOf() as number;
+    if (photoSubtype == 3 && subtype == 3) {
+      await FileUtils.fetchLivePhotosFile(context, result, photoAsset, pmProgressHandler);
+      return;
+    }
 
-      const inputFilePath = uri.substring(uri.lastIndexOf("/") + 1);
-      const inputFilePathSplits = inputFilePath.split(".");
-      Log.i(TAG, "getPathFromUri inputFilePath: " + inputFilePath);
-      const outputFileName = inputFilePathSplits[0];
-      let extension: string;
-      if (inputFilePathSplits.length == 2) {
-        extension = "." + inputFilePathSplits[1];
-      } else {
-        if (defExtension) {
-          extension = defExtension;
-        } else {
-          extension = ".jpg";
+    if (isOrigin) {
+      await FileUtils.fetchOriginAssetFile(context, result, photoAsset, pmProgressHandler);
+    } else {
+      await FileUtils.fetchFullSizeAssetFile(context, result, photoAsset, pmProgressHandler);
+    }
+  }
+
+  static createRequestOptions(pmProgressHandler?: PMProgressHandler,
+    compatibleMode?: photoAccessHelper.CompatibleMode): photoAccessHelper.RequestOptions {
+    let requestOptions: photoAccessHelper.RequestOptions = {
+      deliveryMode: photoAccessHelper.DeliveryMode.HIGH_QUALITY_MODE
+    };
+    if (compatibleMode != undefined) {
+      requestOptions.compatibleMode = compatibleMode;
+    }
+    if (pmProgressHandler) {
+      requestOptions.mediaAssetProgressHandler = {
+        onProgress: (progress: number) => {
+          const normalized = Math.max(0, Math.min(progress, 100)) / 100;
+          pmProgressHandler.notify(normalized, PMProgressState.Loading);
         }
-      }
-      const outputFilePath = targetDirectoryPath + "/" + outputFileName + extension;
-      let isLocal = true;
+      };
+    }
+    return requestOptions;
+  }
 
-      try {
-        let progressListener: fs.ProgressListener = (progress: fs.Progress) => {
-          //console.info(`progressSize: ${progress.processedSize}, totalSize: ${progress.totalSize}`);
-          pmProgressHandler?.notify(progress.processedSize / progress.totalSize, PMProgressState.Loading);
-        };
-        let copyOption: fs.CopyOptions = {
-          "progressListener": progressListener
+  static getPhotoType(photoAsset: photoAccessHelper.PhotoAsset): number {
+    return photoAsset.get(photoAccessHelper.PhotoKeys.PHOTO_TYPE).valueOf() as number;
+  }
+
+  static getErrorMessage(error: BusinessError | Error, fallback: string): string {
+    if (error.message) {
+      return error.message;
+    }
+    return fallback;
+  }
+
+  static async fetchLivePhotosFile(context: common.Context | null, result: MethodResult,
+    photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
+    if (!context) {
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("getFullFile failed", "context is null", null);
+      return;
+    }
+
+    const outputFilePath = FileUtils.makeAssetOutputPath("movingPhoto", photoAsset.uri, ".mp4", false);
+    if (!outputFilePath) {
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("cache dir error", "cache root is null", null);
+      return;
+    }
+
+    pmProgressHandler?.notify(0.0, PMProgressState.Prepare);
+    try {
+      await photoAccessHelper.MediaAssetManager.requestMovingPhoto(
+        context,
+        photoAsset,
+        { deliveryMode: photoAccessHelper.DeliveryMode.HIGH_QUALITY_MODE },
+        {
+          onDataPrepared: async (movingPhoto: photoAccessHelper.MovingPhoto) => {
+            if (!movingPhoto) {
+              pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+              result.error("live photo error", "moving photo is null", null);
+              return;
+            }
+
+            try {
+              await movingPhoto.requestContent(photoAccessHelper.ResourceType.VIDEO_RESOURCE, outputFilePath);
+              pmProgressHandler?.notify(1.0, PMProgressState.Success);
+              result.success(outputFilePath);
+            } catch (e) {
+              let error = e as BusinessError;
+              console.error("requestContent video error: " + error.message);
+              pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+              result.error("live photo error", error.message, null);
+            }
+          },
         }
-        let dstDirUriLocal: string = fileUri.getUriFromPath(outputFilePath);
-        console.error(TAG, `copyFile from ${uri} to ${dstDirUriLocal}`);
-        //isLocal = fs.accessSync(uri);
+      );
+    } catch (e) {
+      let error = e as BusinessError;
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("live photo error", error.message, null);
+    }
+  }
 
-        fs.copy(uri, dstDirUriLocal, copyOption, (err: BusinessError) => {
-          if (err) {
-            console.error(`Failed to copy. Code: ${err.code}, message: ${err.message}`);
-            pmProgressHandler?.notify(0.0, PMProgressState.Failed);
-            result.error("copy file error", inputFilePath, null);
+  static async fetchOriginAssetFile(context: common.Context | null, result: MethodResult,
+    photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
+    if (FileUtils.getPhotoType(photoAsset) == photoAccessHelper.PhotoType.VIDEO) {
+      await FileUtils.fetchOriginVideoFile(context, result, photoAsset, pmProgressHandler);
+      return;
+    }
+    await FileUtils.fetchOriginImageFile(context, result, photoAsset, pmProgressHandler);
+  }
+
+  static async fetchFullSizeAssetFile(context: common.Context | null, result: MethodResult,
+    photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
+    if (FileUtils.getPhotoType(photoAsset) == photoAccessHelper.PhotoType.VIDEO) {
+      await FileUtils.fetchFullSizeVideo(context, result, photoAsset, pmProgressHandler);
+      return;
+    }
+    await FileUtils.fetchFullSizeImageFile(context, result, photoAsset, pmProgressHandler);
+  }
+
+  static async fetchOriginImageFile(context: common.Context | null, result: MethodResult,
+    photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
+    await FileUtils.copyAssetToCache(context, result, photoAsset.uri, "originalPhoto", undefined, pmProgressHandler);
+  }
+
+  static async fetchFullSizeImageFile(context: common.Context | null, result: MethodResult,
+    photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
+    if (!context) {
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("getFullFile failed", "context is null", null);
+      return;
+    }
+
+    const outputFilePath = FileUtils.makeAssetOutputPath("fullPhoto", photoAsset.uri, ".jpg", false);
+    if (!outputFilePath) {
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("full photo error", "cache root is null", null);
+      return;
+    }
+
+    pmProgressHandler?.notify(0.0, PMProgressState.Prepare);
+    try {
+      await new Promise<void>(async (resolve, reject) => {
+        let settled = false;
+        const resolveOnce = () => {
+          if (settled) {
             return;
           }
-          console.info("Succeeded in copying.");
-          pmProgressHandler?.notify(100.0, PMProgressState.Success);
-          let filepath =
-            result.success(outputFilePath);
-        })
-      } catch (err) {
-        console.error(TAG, "copyFile failed err:" + err);
-        result.error("copy file error", inputFilePath, null);
-        return null;
-      } finally {
-        if(!isLocal) {
-          //fs.unlinkSync(uri);
+          settled = true;
+          resolve();
+        };
+        const rejectOnce = (error: BusinessError | Error) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          reject(error);
+        };
+
+        try {
+          await photoAccessHelper.MediaAssetManager.requestImage(
+            context,
+            photoAsset,
+            FileUtils.createRequestOptions(pmProgressHandler),
+            {
+              onDataPrepared: async (imageSource: image.ImageSource) => {
+                try {
+                  await FileUtils.writeFullFileWithAssetId(imageSource, outputFilePath);
+                  resolveOnce();
+                } catch (error) {
+                  rejectOnce(error as BusinessError | Error);
+                } finally {
+                  try {
+                    await imageSource.release();
+                  } catch (_) {
+                  }
+                }
+              }
+            }
+          );
+        } catch (error) {
+          rejectOnce(error as BusinessError | Error);
         }
-        //fs.closeSync(inputFile);
-        //fs.closeSync(outputFile);
-      }
-      return outputFilePath;
+      });
+      pmProgressHandler?.notify(1.0, PMProgressState.Success);
+      result.success(outputFilePath);
+    } catch (error) {
+      const message = FileUtils.getErrorMessage(error as BusinessError | Error, "requestImage failed");
+      console.error("requestImage error: " + message);
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("full photo error", message, null);
     }
+  }
+
+  static async fetchOriginVideoFile(context: common.Context | null, result: MethodResult,
+    photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
+    await FileUtils.copyAssetToCache(context, result, photoAsset.uri, "originalVideo", undefined, pmProgressHandler);
+  }
+
+  static async fetchFullSizeVideo(context: common.Context | null, result: MethodResult,
+    photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
+    if (!context) {
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("getFullFile failed", "context is null", null);
+      return;
+    }
+
+    const outputFilePath = FileUtils.makeAssetOutputPath("fullVideo", photoAsset.uri, ".mp4");
+    if (!outputFilePath) {
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("full video error", "cache root is null", null);
+      return;
+    }
+
+    pmProgressHandler?.notify(0.0, PMProgressState.Prepare);
+    try {
+      await FileUtils.fetchVideoResourceToFile(context, photoAsset, outputFilePath, pmProgressHandler);
+      pmProgressHandler?.notify(1.0, PMProgressState.Success);
+      result.success(outputFilePath);
+    } catch (error) {
+      const message = FileUtils.getErrorMessage(error as BusinessError | Error, "requestVideoFile failed");
+      console.error("requestVideoFile error: " + message);
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("full video error", message, null);
+    }
+  }
+
+  static async fetchVideoResourceToFile(context: common.Context, photoAsset: photoAccessHelper.PhotoAsset,
+    outputFilePath: string, pmProgressHandler?: PMProgressHandler): Promise<void> {
+    const outputFileUri = fileUri.getUriFromPath(outputFilePath);
+    await new Promise<void>(async (resolve, reject) => {
+      let settled = false;
+      const resolveOnce = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve();
+      };
+      const rejectOnce = (error: BusinessError | Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(error);
+      };
+
+      try {
+        await photoAccessHelper.MediaAssetManager.requestVideoFile(
+          context,
+          photoAsset,
+          FileUtils.createRequestOptions(pmProgressHandler, photoAccessHelper.CompatibleMode.ORIGINAL_FORMAT_MODE),
+          outputFileUri,
+          {
+            onDataPrepared: (isPrepared: boolean) => {
+              if (!isPrepared) {
+                rejectOnce(new Error("video data not prepared"));
+                return;
+              }
+              resolveOnce();
+            }
+          }
+        );
+      } catch (error) {
+        rejectOnce(error as BusinessError | Error);
+      }
+    });
+  }
+
+  static async writeFullFileWithAssetId(imageSource: image.ImageSource, outputFilePath: string): Promise<void> {
+    const outputFile = fs.openSync(outputFilePath, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.READ_WRITE);
+    const imagePacker = image.createImagePacker();
+    try {
+      await imagePacker.packToFile(imageSource, outputFile.fd, {
+        format: "image/jpeg",
+        quality: 100
+      });
+    } finally {
+      try {
+        fs.closeSync(outputFile);
+      } catch (_) {
+      }
+      try {
+        await imagePacker.release();
+      } catch (_) {
+      }
+    }
+  }
+
+  static async copyAssetToCache(context: common.Context | null, result: MethodResult, uri: string,
+    cacheDirectory: string, defExtension?: string, pmProgressHandler?: PMProgressHandler): Promise<string | null> {
+    Log.i(TAG, "copyAssetToCache : " + uri);
+    if (!context) {
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("copy file error", "context is null", null);
+      return null;
+    }
+
+    const inputFilePath = uri.substring(uri.lastIndexOf("/") + 1);
+    const outputFilePath = FileUtils.makeAssetOutputPath(cacheDirectory, uri, defExtension);
+    if (!outputFilePath) {
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("copy file error", "cache root is null", null);
+      return null;
+    }
+
+    pmProgressHandler?.notify(0.0, PMProgressState.Prepare);
+    try {
+      let progressListener: fs.ProgressListener = (progress: fs.Progress) => {
+        const totalSize = progress.totalSize > 0 ? progress.totalSize : 1;
+        pmProgressHandler?.notify(progress.processedSize / totalSize, PMProgressState.Loading);
+      };
+      let copyOption: fs.CopyOptions = {
+        "progressListener": progressListener
+      }
+      let dstDirUriLocal: string = fileUri.getUriFromPath(outputFilePath);
+      console.error(TAG, `copyFile from ${uri} to ${dstDirUriLocal}`);
+      await new Promise<void>((resolve, reject) => {
+        fs.copy(uri, dstDirUriLocal, copyOption, (err: BusinessError) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve();
+        })
+      });
+      console.info("Succeeded in copying.");
+      pmProgressHandler?.notify(1.0, PMProgressState.Success);
+      result.success(outputFilePath);
+    } catch (err) {
+      const businessError = err as BusinessError;
+      console.error(TAG, `copyFile failed err:${businessError.code} ${businessError.message}`);
+      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      result.error("copy file error", inputFilePath, null);
+      return null;
+    }
+    return outputFilePath;
+  }
+
+  static makeAssetOutputPath(cacheDirectory: string, uri: string,
+    defExtension?: string, preferInputExtension: boolean = true): string | null {
+    const appContext = PhotoManagerPlugin.uiContext?.getApplicationContext() ?? PhotoManagerPlugin.context;
+    if (!appContext) {
+      return null;
+    }
+
+    const cacheRoot = `${appContext.cacheDir}/photo_manager`;
+    if (!fs.accessSync(cacheRoot)) {
+      fs.mkdirSync(cacheRoot);
+    }
+    const targetRoot = `${cacheRoot}/${cacheDirectory}`;
+    if (!fs.accessSync(targetRoot)) {
+      fs.mkdirSync(targetRoot);
+    }
+
+    const uuid = util.generateRandomUUID();
+    const targetDirectoryPath = `${targetRoot}/${uuid}`;
+    try {
+      fs.mkdirSync(targetDirectoryPath);
+      let targetDir = fs.openSync(targetDirectoryPath);
+      Log.i(TAG, "mkdirSync success targetDirectoryPath:" + targetDirectoryPath + " fd: " + targetDir.fd);
+      fs.closeSync(targetDir);
+    } catch (err) {
+      Log.e(TAG, "mkdirSync failed err:" + err);
+      return null;
+    }
+
+    const inputFilePath = uri.substring(uri.lastIndexOf("/") + 1);
+    const extensionIndex = inputFilePath.lastIndexOf(".");
+    const hasInputExtension = extensionIndex > 0 && extensionIndex < inputFilePath.length - 1;
+    const outputFileName = hasInputExtension ? inputFilePath.substring(0, extensionIndex) : inputFilePath;
+    let extension: string;
+    if (preferInputExtension && hasInputExtension) {
+      extension = inputFilePath.substring(extensionIndex);
+    } else if (defExtension) {
+      extension = defExtension;
+    } else if (hasInputExtension) {
+      extension = inputFilePath.substring(extensionIndex);
+    } else {
+      extension = ".jpg";
+    }
+
+    return `${targetDirectoryPath}/${outputFileName}${extension}`;
   }
 }
