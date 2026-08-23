@@ -176,8 +176,12 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let args: Map<string, ESObject> = call.args;
         let ids: Array<string> = args.get('ids');
 
-
-        await photoAccessHelper.MediaAssetChangeRequest.deleteAssets(this.context!, ids);
+        // deleteAssets 单次最多 300 个资产，超出直接拒绝，需分批调用
+        const maxDeleteCount = 300;
+        for (let i = 0; i < ids.length; i += maxDeleteCount) {
+          const chunk: Array<string> = ids.slice(i, Math.min(i + maxDeleteCount, ids.length));
+          await photoAccessHelper.MediaAssetChangeRequest.deleteAssets(this.context!, chunk);
+        }
         // 从回收站里面彻底删除，系统接口，目前不支持
         // if (call.method == 'deleteWithIds') {
         //
