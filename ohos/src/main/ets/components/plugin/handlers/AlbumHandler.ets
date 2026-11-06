@@ -110,39 +110,48 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
 
   static async saveLivePhoto(imagePath:string,videoPath:string,title:string,desc:string):Promise<photoAccessHelper.PhotoAsset|undefined>{
     const context = PhotoManagerPlugin.uiContext ?? PhotoManagerPlugin.context;
+    const contextSource = PhotoManagerPlugin.uiContext != null
+      ? 'uiContext'
+      : (PhotoManagerPlugin.context != null ? 'applicationContext' : 'none');
     if (!context) {
-      console.warn('saveLivePhoto skip: context is null (no media context available)');
-      return undefined;
+      const message = 'saveLivePhoto failed: no media context available';
+      console.error(`[photo_manager][saveLivePhoto] stage=context, context=${contextSource}, imagePath=${imagePath}, videoPath=${videoPath}, title=${title}, message=${message}`);
+      throw new Error(message);
     }
 
-    let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
+    let stage = 'getPhotoAccessHelper';
+    let extension = 'jpg';
     try {
-      let extension = "jpg";
+      let phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
+      stage = 'resolveImageExtension';
       const lastIndex = imagePath.lastIndexOf('.');
       if (lastIndex > 0 && lastIndex < imagePath.length - 1) {
         extension = imagePath.slice(lastIndex + 1).toLowerCase();
       }
+
+      stage = 'createAssetRequest';
       let assetChangeRequest: photoAccessHelper.MediaAssetChangeRequest =
         photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(context,
           photoAccessHelper.PhotoType.IMAGE, extension, {
             title: title,
             subtype: photoAccessHelper.PhotoSubtype.MOVING_PHOTO
           });
+      stage = 'addImageResource';
       let srcImageFileUris: Array<string> = [imagePath];
       let srcVideoFileUris: Array<string> = [videoPath];
       assetChangeRequest.addResource(photoAccessHelper.ResourceType.IMAGE_RESOURCE, srcImageFileUris[0]);
+      stage = 'addVideoResource';
       assetChangeRequest.addResource(photoAccessHelper.ResourceType.VIDEO_RESOURCE, srcVideoFileUris[0]);
+      stage = 'applyChanges';
       await phAccessHelper.applyChanges(assetChangeRequest);
-      console.error("save LivePhoto applyChanges success");
+      console.error(`[photo_manager][saveLivePhoto] applyChanges success, context=${contextSource}, extension=${extension}, imagePath=${imagePath}, videoPath=${videoPath}, title=${title}`);
 
-      try {
-        let livingPhotoAsset = assetChangeRequest.getAsset();
-        return livingPhotoAsset;
-      } catch (e) {
-        let error = e as BusinessError;
-        console.error("assetChangeRequest.getAsset() failed" + error.message);
-        return undefined;
+      stage = 'getAsset';
+      let livingPhotoAsset = assetChangeRequest.getAsset();
+      if (livingPhotoAsset == undefined) {
+        throw new Error('assetChangeRequest.getAsset() returned undefined');
       }
+      return livingPhotoAsset;
 
       // albumChangeRequest.addAssets([livingPhotoAsset]);
       // console.error("save LivePhoto asset added to albumChangeRequest");
@@ -150,9 +159,15 @@ export class AlbumHandler extends HandlerBase implements MethodCallHandlerBase {
       // console.error("save LivePhoto applyChanges to album success");
 
     } catch (e) {
-      let error = e as BusinessError
-      console.error("save LivePhoto Error:" + error.message);
-      return undefined;
+      let error = e as BusinessError;
+      const code = error.code != undefined ? error.code.toString() : 'unknown';
+      const message = error.message != undefined ? error.message : 'unknown error';
+      const stack = error.stack != undefined ? error.stack : '';
+      console.error(`[photo_manager][saveLivePhoto] failed, stage=${stage}, code=${code}, message=${message}, context=${contextSource}, extension=${extension}, imagePath=${imagePath}, videoPath=${videoPath}, title=${title}`);
+      if (stack.length > 0) {
+        console.error(`[photo_manager][saveLivePhoto] stack=${stack}`);
+      }
+      throw new Error(message);
     }
   }
 

@@ -101,29 +101,41 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
         let title = args.get("title") as string;
         let desc = args.get("desc") as string;
         let relativePath = args.get("relativePath") as string;
-        console.error("saveLivePhoto imagePath:"+imagePath+",videoPath:"+videoPath+",title:"+title+",desc:"+desc+",relativePath:"+relativePath);
+        console.error(`[photo_manager][saveLivePhoto] request, imagePath=${imagePath}, videoPath=${videoPath}, title=${title}, desc=${desc}, relativePath=${relativePath}`);
 
-        let asset = await AlbumHandler.saveLivePhoto(imagePath,videoPath,title,desc);
-        if(asset==undefined) {
-          console.error("saveLivePhoto failed");
-          result.error("saveLivePhoto failed","failed",null);
-          return false;
+        try {
+          let asset = await AlbumHandler.saveLivePhoto(imagePath, videoPath, title, desc);
+          if (asset == undefined) {
+            const message = 'AlbumHandler.saveLivePhoto returned undefined';
+            console.error(`[photo_manager][saveLivePhoto] failed at handler boundary, imagePath=${imagePath}, videoPath=${videoPath}, message=${message}`);
+            result.error('saveLivePhoto failed', message, `imagePath=${imagePath}; videoPath=${videoPath}`);
+            return true;
+          }
+          console.error(`[photo_manager][saveLivePhoto] success, uri=${asset.uri}, imagePath=${imagePath}, videoPath=${videoPath}`);
+          let uri = asset.uri as string;
+          let media_type = PhotoAssetHandler.getAssetMember(asset, photoAccessHelper.PhotoKeys.PHOTO_TYPE) as number;
+          let subtype = 3;
+          result.success(new Map<string, ESObject>(
+            [
+              ['id', uri],
+              // IMAGE 1  VIDEO 2
+              ['type', media_type],
+              ['width', 0],
+              ['height', 0],
+              ['title', title],
+              ['subtype', subtype],
+            ]
+          ));
+        } catch (error) {
+          let err = error as BusinessError;
+          const code = err.code != undefined ? err.code.toString() : 'saveLivePhoto failed';
+          const message = err.message != undefined ? err.message : 'unknown error';
+          const details = err.stack != undefined
+            ? `${err.stack}; imagePath=${imagePath}; videoPath=${videoPath}`
+            : `imagePath=${imagePath}; videoPath=${videoPath}`;
+          console.error(`[photo_manager][saveLivePhoto] method failed, code=${code}, message=${message}, details=${details}`);
+          result.error(code, message, details);
         }
-        console.error("saveLivePhoto success:"+asset.uri);
-        let uri = asset.uri as string;
-        let media_type = PhotoAssetHandler.getAssetMember(asset, photoAccessHelper.PhotoKeys.PHOTO_TYPE) as number;
-        let subtype = 3;
-        result.success(new Map<string, ESObject>(
-          [
-            ['id', uri],
-            // IMAGE 1  VIDEO 2
-            ['type', media_type],
-            ['width', 0],
-            ['height', 0],
-            ['title', title],
-            ['subtype', subtype],
-          ]
-        ))
         return true;
 
         break;
