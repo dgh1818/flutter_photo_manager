@@ -180,7 +180,17 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         const maxDeleteCount = 300;
         for (let i = 0; i < ids.length; i += maxDeleteCount) {
           const chunk: Array<string> = ids.slice(i, Math.min(i + maxDeleteCount, ids.length));
-          await photoAccessHelper.MediaAssetChangeRequest.deleteAssets(this.context!, chunk);
+          try {
+            await photoAccessHelper.MediaAssetChangeRequest.deleteAssets(this.context!, chunk);
+          } catch (e) {
+            const error = e as BusinessError;
+            if (error.code === 201 && (error.message ?? '').toLowerCase().includes('user deny')) {
+              result.success(ids.slice(0, i));
+            } else {
+              result.error(`${error.code}`, call.method, `${error.message}`);
+            }
+            return true;
+          }
         }
         // 从回收站里面彻底删除，系统接口，目前不支持
         // if (call.method == 'deleteWithIds') {
