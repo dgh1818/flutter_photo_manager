@@ -26,8 +26,15 @@ class ReadRequest implements MethodResult {
   cancelNative?: () => void;
   outputPath?: string;
 
-  constructor(private result: MethodResult, private onFinish: () => void,
-    readonly progress?: PMProgressHandler) {}
+  private result: MethodResult;
+  private onFinish: () => void;
+  readonly progress?: PMProgressHandler;
+
+  constructor(result: MethodResult, onFinish: () => void, progress?: PMProgressHandler) {
+    this.result = result;
+    this.onFinish = onFinish;
+    this.progress = progress;
+  }
 
   success(value: ESObject): void {
     if (this.finish()) {
@@ -73,10 +80,12 @@ class ReadRequest implements MethodResult {
   }
 
   setNativeRequest(context: common.Context, id: string): void {
-    const cancel = () => {
+    const cancel = (): void => {
       photoAccessHelper.MediaAssetManager.cancelRequest(context, id)
-        .catch((error: BusinessError) => Log.e(TAG, 'cancelRequest failed: ' + error.message))
-        .finally(() => this.cleanCancelledOutput());
+        .catch((error: BusinessError): void => {
+          Log.e(TAG, 'cancelRequest failed: ' + error.message);
+        })
+        .finally((): void => this.cleanCancelledOutput());
     };
     if (this.cancelled) {
       cancel();
