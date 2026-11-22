@@ -65,7 +65,6 @@ export default class PhotoManagerPlugin extends HandlerBase implements FlutterPl
   onAttachedToAbility(binding: AbilityPluginBinding): void {
     PhotoManagerPlugin._uiContext = binding.getAbility().context;
     this.notifyPlugin.onAttachedToAbility(binding);
-    PhotoManagerPlugin._binding
   }
 
   onDetachedFromAbility(): void {
@@ -88,6 +87,7 @@ export default class PhotoManagerPlugin extends HandlerBase implements FlutterPl
     if (this.channel != null) {
       this.channel.setMethodCallHandler(null)
     }
+    this.photoAssetHandler.cancelReads();
     this.notifyPlugin.onDetachedFromEngine(binding);
   }
 

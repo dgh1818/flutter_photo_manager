@@ -202,7 +202,7 @@ export class SaveHandler extends HandlerBase implements MethodCallHandlerBase {
       let err: BusinessError = error as BusinessError;
       console.error(`save failed: title=${title}, ext=${extension}, type=${photoType}`);
       if (PhotoManagerPlugin.showLog) {
-        
+
         console.info(err.code.toString(), err.message, err.stack);
       }
       result.error(err.code.toString(), err.message, err.stack);

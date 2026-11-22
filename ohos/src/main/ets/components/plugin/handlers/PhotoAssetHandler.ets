@@ -3,7 +3,7 @@ import { dataSharePredicates } from '@kit.ArkData';
 import { HandlerBase, MethodCallHandlerBase } from './HandlerBase';
 import PhotoManagerPlugin from '../PhotoManagerPlugin';
 import { MethodResult } from '@ohos/flutter_ohos/src/main/ets/plugin/common/MethodChannel';
-import { MethodCall, MethodChannel } from '@ohos/flutter_ohos';
+import { MethodCall } from '@ohos/flutter_ohos';
 import { RequestType } from '../types/RequestType';
 import { AlbumHandler } from './AlbumHandler';
 import { image } from '@kit.ImageKit';
@@ -19,8 +19,115 @@ import { PMProgressHandler } from './PMProgressHandler';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { PMProgressState } from './PMProgressHandlerInterface';
 
+class ReadRequest implements MethodResult {
+  private finished = false;
+  cancelled = false;
+  onCancel?: () => void;
+  cancelNative?: () => void;
+  outputPath?: string;
+
+  constructor(private result: MethodResult, private onFinish: () => void) {}
+
+  success(value: ESObject): void {
+    if (this.finish()) {
+      this.result.success(value);
+    }
+  }
+
+  error(code: string, message: string, details: ESObject): void {
+    if (this.finish()) {
+      this.result.error(code, message, details);
+    }
+  }
+
+  notImplemented(): void {
+    if (this.finish()) {
+      this.result.notImplemented();
+    }
+  }
+
+  private finish(): boolean {
+    if (this.finished) {
+      this.cleanCancelledOutput();
+      return false;
+    }
+    this.finished = true;
+    this.onFinish();
+    this.onCancel = undefined;
+    this.cancelNative = undefined;
+    return true;
+  }
+
+  cancel(): void {
+    if (this.finished) {
+      return;
+    }
+    const onCancel = this.onCancel;
+    const cancelNative = this.cancelNative;
+    this.cancelled = true;
+    this.success(null);
+    onCancel?.();
+    cancelNative?.();
+  }
+
+  setNativeRequest(context: common.Context, id: string): void {
+    const cancel = () => {
+      photoAccessHelper.MediaAssetManager.cancelRequest(context, id)
+        .catch((error: BusinessError) => Log.e(TAG, 'cancelRequest failed: ' + error.message))
+        .finally(() => this.cleanCancelledOutput());
+    };
+    if (this.cancelled) {
+      cancel();
+    } else if (!this.finished) {
+      this.cancelNative = cancel;
+    }
+  }
+
+  cleanCancelledOutput(): void {
+    if (!this.cancelled || !this.outputPath) {
+      return;
+    }
+    const path = this.outputPath;
+    try {
+      fs.unlinkSync(path);
+    } catch (_) {
+    }
+    try {
+      fs.rmdirSync(path.substring(0, path.lastIndexOf('/')));
+    } catch (_) {
+    }
+  }
+}
+
 export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerBase {
+  private readonly reads = new Map<string, Set<ReadRequest>>();
+
+  private startRead(call: MethodCall, result: MethodResult): ReadRequest {
+    const args: Map<string, ESObject> = call.args;
+    const token = args.get('cancelToken') as string;
+    const requests = this.reads.get(token) ?? new Set<ReadRequest>();
+    const request = new ReadRequest(result, () => {
+      requests.delete(request);
+      if (requests.size === 0) {
+        this.reads.delete(token);
+      }
+    });
+    requests.add(request);
+    this.reads.set(token, requests);
+    return request;
+  }
+
+  cancelReads(): void {
+    this.reads.forEach((requests) => requests.forEach((request) => request.cancel()));
+  }
+
   async onMethodCall(call: MethodCall, result: MethodResult): Promise<boolean> {
+    if (call.method === 'cancelRequestWithCancelToken') {
+      const args: Map<string, ESObject> = call.args;
+      this.reads.get(args.get('cancelToken') as string)?.forEach((request) => request.cancel());
+      result.success(null);
+      return true;
+    }
     if (this.context == null) {
       result.error('100', 'context is null', 'it should not be null');
       return true;
@@ -41,7 +148,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           result.success(new Map<string, ESObject>(
             [['data', assets]]
           ));
-        } else {
+        }
+        else {
           result.error(`${call.method} failed`, `not find assets by ${args}`, null);
         }
       }
@@ -58,15 +166,45 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           pmProgressHandler = new PMProgressHandler(PhotoManagerPlugin.binding!, index);
         }
 
-        await FileUtils.getFullSizeFileWithId(this.context, result, id, isOrigin, subtype, pmProgressHandler);
+        const request = this.startRead(call, result);
+        try {
+          await FileUtils.getFullSizeFileWithId(this.context, request, id, isOrigin, subtype, pmProgressHandler);
+        } catch (error) {
+          request.error('getFullFile failed', (error as Error).message, null);
+        }
       }
         break;
       case 'getOriginBytes': {
-        let args: Map<string, ESObject> = call.args;
-        let id: string = args.get('id');
-        //option
-        //type
-        let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
+        const request = this.startRead(call, result);
+        const args: Map<string, ESObject> = call.args;
+        const id = args.get('id') as string;
+        try {
+          const asset = await PhotoAssetHandler.getPhotoAsset(id);
+          if (request.cancelled) {
+            return true;
+          }
+          if (!asset) {
+            request.error('getOriginBytes failed', `not find asset by ${id}`, null);
+            return true;
+          }
+          const file = await fs.open(asset.uri, fs.OpenMode.READ_ONLY);
+          try {
+            const stat = await fs.stat(file.fd);
+            if (!request.cancelled) {
+              const bytes = new ArrayBuffer(stat.size);
+              const length = await fs.read(file.fd, bytes);
+              if (length === stat.size) {
+                request.success(new Uint8Array(bytes));
+              } else {
+                request.error('getOriginBytes failed', 'Incomplete original file read', null);
+              }
+            }
+          } finally {
+            await fs.close(file.fd);
+          }
+        } catch (error) {
+          request.error('getOriginBytes failed', (error as Error).message, null);
+        }
       }
         break;
       case 'getThumb': {
@@ -81,39 +219,36 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let width: number = option.get('width');
         let height: number = option.get('height');
         let resizeContentMode: number = option.get('resizeContentMode') as number;
-        //option
-        //type
-        let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
-        // this.photoAssets.get(id);
-        if (photoAsset != null) {
-          const thumbnailSize = PhotoAssetHandler.makeThumbnailRequestSize(
-            photoAsset,
-            width,
-            height,
-            resizeContentMode,
-          );
-          let pixelMap: image.PixelMap = await photoAsset.getThumbnail(thumbnailSize);
-          const imagePackerApi = image.createImagePacker();
-
-          let format: string = 'image/jpeg';
-          switch (option.get('format')) {
-            case 1:
-              format = 'image/png'
-              break;
-            default:
-              break;
+        const request = this.startRead(call, result);
+        try {
+          const photoAsset = await PhotoAssetHandler.getPhotoAsset(id);
+          if (request.cancelled) {
+            return true;
           }
-
-          const packOptions: image.PackingOption = {
-            format: format,
-            quality: option.get('quality'),
+          if (!photoAsset) {
+            request.error(`${call.method} failed`, `not find asset by ${id}`, null);
+            return true;
           }
-
-          let uint8Array: Uint8Array = new Uint8Array(await imagePackerApi.packing(pixelMap, packOptions));
-          pixelMap.release();
-          result.success(uint8Array);
-        } else {
-          result.error(`${call.method} failed`, `not find asset by ${args}`, null);
+          const thumbnailSize = PhotoAssetHandler.makeThumbnailRequestSize(photoAsset, width, height, resizeContentMode);
+          const pixelMap = await photoAsset.getThumbnail(thumbnailSize);
+          try {
+            if (!request.cancelled) {
+              const imagePackerApi = image.createImagePacker();
+              try {
+                const packOptions: image.PackingOption = {
+                  format: option.get('format') === 1 ? 'image/png' : 'image/jpeg',
+                  quality: option.get('quality'),
+                };
+                request.success(new Uint8Array(await imagePackerApi.packing(pixelMap, packOptions)));
+              } finally {
+                await imagePackerApi.release();
+              }
+            }
+          } finally {
+            await pixelMap.release();
+          }
+        } catch (error) {
+          request.error(`${call.method} failed`, (error as Error).message, null);
         }
       }
         break;
@@ -132,7 +267,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           result.success(new Map<string, ESObject>(
             [['data', assets]]
           ));
-        } else {
+        }
+        else {
           result.error(`${call.method} failed`, `not find assets by ${args}`, null);
         }
       }
@@ -157,7 +293,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           let assets: Array<Map<string, ESObject>> | null = await this.getAssetList(args, start, end, element);
           if (assets != null) {
             data.push(...assets);
-          } else {
+          }
+          else {
             result.error(`${call.method} failed`, `not find assets by ${args}`, null);
             return true;
           }
@@ -186,7 +323,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
             const error = e as BusinessError;
             if (error.code === 201 && (error.message ?? '').toLowerCase().includes('user deny')) {
               result.success(ids.slice(0, i));
-            } else {
+            }
+            else {
               result.error(`${error.code}`, call.method, `${error.message}`);
             }
             return true;
@@ -208,7 +346,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
         if (photoAsset != null) {
           result.success(PhotoAssetHandler.photoAssetToMap(photoAsset));
-        } else {
+        }
+        else {
           result.error(`${call.method} failed`, `not find asset by ${args}`, null);
         }
       }
@@ -227,7 +366,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
         if (photoAsset == null) {
           result.success(false);
-        } else {
+        }
+        else {
           result.success(PhotoAssetHandler.setAssetMember(photoAsset, photoAccessHelper.PhotoKeys.FAVORITE,
             favorite ? 'true' : 'false'));
         }
@@ -240,7 +380,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         if (photoAsset != null) {
           let file = await fs.open(photoAsset.uri, fs.OpenMode.READ_ONLY);
           result.success(file.fd);
-        } else {
+        }
+        else {
           result.error(`${call.method} failed`, `not find asset by ${args}`, null);
         }
       }
@@ -259,7 +400,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           } catch (e) {
             result.error(`${call.method} failed`, e.toString(), null);
           }
-        } else {
+        }
+        else {
           let errorInfo = '';
           if (photoAsset == null) {
             errorInfo = `not find asset by ${id}`;
@@ -326,7 +468,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           }
           if (orderByItem.isAsc) {
             predicates.orderByAsc(orderByItem.column);
-          } else {
+          }
+          else {
             predicates.orderByDesc(orderByItem.column);
           }
         }
@@ -344,7 +487,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           if (column != undefined) {
             if (orderItem.asc) {
               predicates.orderByAsc(column);
-            } else {
+            }
+            else {
               predicates.orderByDesc(column);
             }
           }
@@ -389,7 +533,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
       }
       photoFetchResult.close();
       return assets;
-    } else {
+    }
+    else {
       return null;
     }
   }
@@ -620,7 +765,8 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     let position = asset.get(photoAccessHelper.PhotoKeys.POSITION) as photoAccessHelper.PositionType;
     if (position == photoAccessHelper.PositionType.CLOUD) {
       return false;
-    } else {
+    }
+    else {
       return true;
     }
 
@@ -630,9 +776,12 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
 const TAG = "FileUtils";
 
 class FileUtils {
-  static async getFullSizeFileWithId(context: common.Context | null, result: MethodResult, assetId: string,
+  static async getFullSizeFileWithId(context: common.Context | null, result: ReadRequest, assetId: string,
     isOrigin: boolean, subtype: number, pmProgressHandler?: PMProgressHandler): Promise<void> {
     let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(assetId);
+    if (result.cancelled) {
+      return;
+    }
     if (!photoAsset) {
       pmProgressHandler?.notify(0.0, PMProgressState.Failed);
       result.error("getFullFile failed", `not find asset by ${assetId}`, null);
@@ -653,7 +802,7 @@ class FileUtils {
   }
 
   static createRequestOptions(pmProgressHandler?: PMProgressHandler,
-    compatibleMode?: photoAccessHelper.CompatibleMode): photoAccessHelper.RequestOptions {
+    compatibleMode?: photoAccessHelper.CompatibleMode, result?: ReadRequest): photoAccessHelper.RequestOptions {
     let requestOptions: photoAccessHelper.RequestOptions = {
       deliveryMode: photoAccessHelper.DeliveryMode.HIGH_QUALITY_MODE
     };
@@ -663,6 +812,9 @@ class FileUtils {
     if (pmProgressHandler) {
       requestOptions.mediaAssetProgressHandler = {
         onProgress: (progress: number) => {
+          if (result?.cancelled) {
+            return;
+          }
           const normalized = Math.max(0, Math.min(progress, 100)) / 100;
           pmProgressHandler.notify(normalized, PMProgressState.Loading);
         }
@@ -682,7 +834,7 @@ class FileUtils {
     return fallback;
   }
 
-  static async fetchLivePhotosFile(context: common.Context | null, result: MethodResult,
+  static async fetchLivePhotosFile(context: common.Context | null, result: ReadRequest,
     photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
     if (!context) {
       pmProgressHandler?.notify(0.0, PMProgressState.Failed);
@@ -697,41 +849,54 @@ class FileUtils {
       return;
     }
 
+    result.outputPath = outputFilePath;
     pmProgressHandler?.notify(0.0, PMProgressState.Prepare);
     try {
-      await photoAccessHelper.MediaAssetManager.requestMovingPhoto(
+      const requestId = await photoAccessHelper.MediaAssetManager.requestMovingPhoto(
         context,
         photoAsset,
         { deliveryMode: photoAccessHelper.DeliveryMode.HIGH_QUALITY_MODE },
         {
           onDataPrepared: async (movingPhoto: photoAccessHelper.MovingPhoto) => {
+            if (result.cancelled) {
+              return;
+            }
             if (!movingPhoto) {
-              pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+              if (!result.cancelled) {
+                pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+              }
               result.error("live photo error", "moving photo is null", null);
               return;
             }
 
             try {
               await movingPhoto.requestContent(photoAccessHelper.ResourceType.VIDEO_RESOURCE, outputFilePath);
-              pmProgressHandler?.notify(1.0, PMProgressState.Success);
+              if (!result.cancelled) {
+                pmProgressHandler?.notify(1.0, PMProgressState.Success);
+              }
               result.success(outputFilePath);
             } catch (e) {
               let error = e as BusinessError;
               console.error("requestContent video error: " + error.message);
-              pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+              if (!result.cancelled) {
+                pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+              }
               result.error("live photo error", error.message, null);
             }
           },
         }
       );
+      result.setNativeRequest(context, requestId);
     } catch (e) {
       let error = e as BusinessError;
-      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      if (!result.cancelled) {
+        pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      }
       result.error("live photo error", error.message, null);
     }
   }
 
-  static async fetchOriginAssetFile(context: common.Context | null, result: MethodResult,
+  static async fetchOriginAssetFile(context: common.Context | null, result: ReadRequest,
     photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
     if (FileUtils.getPhotoType(photoAsset) == photoAccessHelper.PhotoType.VIDEO) {
       await FileUtils.fetchOriginVideoFile(context, result, photoAsset, pmProgressHandler);
@@ -740,7 +905,7 @@ class FileUtils {
     await FileUtils.fetchOriginImageFile(context, result, photoAsset, pmProgressHandler);
   }
 
-  static async fetchFullSizeAssetFile(context: common.Context | null, result: MethodResult,
+  static async fetchFullSizeAssetFile(context: common.Context | null, result: ReadRequest,
     photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
     if (FileUtils.getPhotoType(photoAsset) == photoAccessHelper.PhotoType.VIDEO) {
       await FileUtils.fetchFullSizeVideo(context, result, photoAsset, pmProgressHandler);
@@ -749,12 +914,12 @@ class FileUtils {
     await FileUtils.fetchFullSizeImageFile(context, result, photoAsset, pmProgressHandler);
   }
 
-  static async fetchOriginImageFile(context: common.Context | null, result: MethodResult,
+  static async fetchOriginImageFile(context: common.Context | null, result: ReadRequest,
     photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
     await FileUtils.copyAssetToCache(context, result, photoAsset.uri, "originalPhoto", undefined, pmProgressHandler);
   }
 
-  static async fetchFullSizeImageFile(context: common.Context | null, result: MethodResult,
+  static async fetchFullSizeImageFile(context: common.Context | null, result: ReadRequest,
     photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
     if (!context) {
       pmProgressHandler?.notify(0.0, PMProgressState.Failed);
@@ -769,66 +934,55 @@ class FileUtils {
       return;
     }
 
+    result.outputPath = outputFilePath;
     pmProgressHandler?.notify(0.0, PMProgressState.Prepare);
     try {
-      await new Promise<void>(async (resolve, reject) => {
-        let settled = false;
-        const resolveOnce = () => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          resolve();
-        };
-        const rejectOnce = (error: BusinessError | Error) => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          reject(error);
-        };
-
-        try {
-          await photoAccessHelper.MediaAssetManager.requestImage(
-            context,
-            photoAsset,
-            FileUtils.createRequestOptions(pmProgressHandler),
-            {
-              onDataPrepared: async (imageSource: image.ImageSource) => {
-                try {
+      await new Promise<void>((resolve, reject) => {
+        result.onCancel = () => resolve();
+        photoAccessHelper.MediaAssetManager.requestImage(
+          context,
+          photoAsset,
+          FileUtils.createRequestOptions(pmProgressHandler, undefined, result),
+          {
+            onDataPrepared: async (imageSource: image.ImageSource) => {
+              try {
+                if (!result.cancelled) {
                   await FileUtils.writeFullFileWithAssetId(imageSource, outputFilePath);
-                  resolveOnce();
-                } catch (error) {
-                  rejectOnce(error as BusinessError | Error);
-                } finally {
-                  try {
-                    await imageSource.release();
-                  } catch (_) {
-                  }
+                }
+                resolve();
+              } catch (error) {
+                reject(error as BusinessError | Error);
+              } finally {
+                result.cleanCancelledOutput();
+                try {
+                  await imageSource.release();
+                } catch (_) {
                 }
               }
             }
-          );
-        } catch (error) {
-          rejectOnce(error as BusinessError | Error);
-        }
+          }
+        ).then((requestId) => result.setNativeRequest(context, requestId), reject);
       });
-      pmProgressHandler?.notify(1.0, PMProgressState.Success);
+      if (!result.cancelled) {
+        pmProgressHandler?.notify(1.0, PMProgressState.Success);
+      }
       result.success(outputFilePath);
     } catch (error) {
       const message = FileUtils.getErrorMessage(error as BusinessError | Error, "requestImage failed");
       console.error("requestImage error: " + message);
-      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      if (!result.cancelled) {
+        pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      }
       result.error("full photo error", message, null);
     }
   }
 
-  static async fetchOriginVideoFile(context: common.Context | null, result: MethodResult,
+  static async fetchOriginVideoFile(context: common.Context | null, result: ReadRequest,
     photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
     await FileUtils.copyAssetToCache(context, result, photoAsset.uri, "originalVideo", undefined, pmProgressHandler);
   }
 
-  static async fetchFullSizeVideo(context: common.Context | null, result: MethodResult,
+  static async fetchFullSizeVideo(context: common.Context | null, result: ReadRequest,
     photoAsset: photoAccessHelper.PhotoAsset, pmProgressHandler?: PMProgressHandler): Promise<void> {
     if (!context) {
       pmProgressHandler?.notify(0.0, PMProgressState.Failed);
@@ -843,58 +997,45 @@ class FileUtils {
       return;
     }
 
+    result.outputPath = outputFilePath;
     pmProgressHandler?.notify(0.0, PMProgressState.Prepare);
     try {
-      await FileUtils.fetchVideoResourceToFile(context, photoAsset, outputFilePath, pmProgressHandler);
-      pmProgressHandler?.notify(1.0, PMProgressState.Success);
+      await FileUtils.fetchVideoResourceToFile(context, result, photoAsset, outputFilePath, pmProgressHandler);
+      if (!result.cancelled) {
+        pmProgressHandler?.notify(1.0, PMProgressState.Success);
+      }
       result.success(outputFilePath);
     } catch (error) {
       const message = FileUtils.getErrorMessage(error as BusinessError | Error, "requestVideoFile failed");
       console.error("requestVideoFile error: " + message);
-      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      if (!result.cancelled) {
+        pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      }
       result.error("full video error", message, null);
     }
   }
 
-  static async fetchVideoResourceToFile(context: common.Context, photoAsset: photoAccessHelper.PhotoAsset,
+  static async fetchVideoResourceToFile(context: common.Context, result: ReadRequest, photoAsset: photoAccessHelper.PhotoAsset,
     outputFilePath: string, pmProgressHandler?: PMProgressHandler): Promise<void> {
     const outputFileUri = fileUri.getUriFromPath(outputFilePath);
-    await new Promise<void>(async (resolve, reject) => {
-      let settled = false;
-      const resolveOnce = () => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        resolve();
-      };
-      const rejectOnce = (error: BusinessError | Error) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        reject(error);
-      };
-
-      try {
-        await photoAccessHelper.MediaAssetManager.requestVideoFile(
-          context,
-          photoAsset,
-          FileUtils.createRequestOptions(pmProgressHandler, photoAccessHelper.CompatibleMode.ORIGINAL_FORMAT_MODE),
-          outputFileUri,
-          {
-            onDataPrepared: (isPrepared: boolean) => {
-              if (!isPrepared) {
-                rejectOnce(new Error("video data not prepared"));
-                return;
-              }
-              resolveOnce();
+    await new Promise<void>((resolve, reject) => {
+      result.onCancel = () => resolve();
+      photoAccessHelper.MediaAssetManager.requestVideoFile(
+        context,
+        photoAsset,
+        FileUtils.createRequestOptions(pmProgressHandler, photoAccessHelper.CompatibleMode.ORIGINAL_FORMAT_MODE, result),
+        outputFileUri,
+        {
+          onDataPrepared: (isPrepared: boolean) => {
+            result.cleanCancelledOutput();
+            if (isPrepared) {
+              resolve();
+            } else {
+              reject(new Error("video data not prepared"));
             }
           }
-        );
-      } catch (error) {
-        rejectOnce(error as BusinessError | Error);
-      }
+        }
+      ).then((requestId) => result.setNativeRequest(context, requestId), reject);
     });
   }
 
@@ -918,7 +1059,7 @@ class FileUtils {
     }
   }
 
-  static async copyAssetToCache(context: common.Context | null, result: MethodResult, uri: string,
+  static async copyAssetToCache(context: common.Context | null, result: ReadRequest, uri: string,
     cacheDirectory: string, defExtension?: string, pmProgressHandler?: PMProgressHandler): Promise<string | null> {
     Log.i(TAG, "copyAssetToCache : " + uri);
     if (!context) {
@@ -935,15 +1076,28 @@ class FileUtils {
       return null;
     }
 
+    result.outputPath = outputFilePath;
     pmProgressHandler?.notify(0.0, PMProgressState.Prepare);
     try {
       let progressListener: fs.ProgressListener = (progress: fs.Progress) => {
+        if (result.cancelled) {
+          return;
+        }
         const totalSize = progress.totalSize > 0 ? progress.totalSize : 1;
         pmProgressHandler?.notify(progress.processedSize / totalSize, PMProgressState.Loading);
       };
-      let copyOption: fs.CopyOptions = {
-        "progressListener": progressListener
-      }
+      const signal = new fs.TaskSignal();
+      result.cancelNative = () => {
+        try {
+          signal.cancel();
+        } catch (error) {
+          Log.e(TAG, 'copy cancellation failed: ' + (error as Error).message);
+        }
+      };
+      const copyOption: fs.CopyOptions = {
+        progressListener: progressListener,
+        copySignal: signal,
+      };
       let dstDirUriLocal: string = fileUri.getUriFromPath(outputFilePath);
       console.error(TAG, `copyFile from ${uri} to ${dstDirUriLocal}`);
       await new Promise<void>((resolve, reject) => {
@@ -956,16 +1110,20 @@ class FileUtils {
         })
       });
       console.info("Succeeded in copying.");
-      pmProgressHandler?.notify(1.0, PMProgressState.Success);
+      if (!result.cancelled) {
+        pmProgressHandler?.notify(1.0, PMProgressState.Success);
+      }
       result.success(outputFilePath);
     } catch (err) {
       const businessError = err as BusinessError;
       console.error(TAG, `copyFile failed err:${businessError.code} ${businessError.message}`);
-      pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      if (!result.cancelled) {
+        pmProgressHandler?.notify(0.0, PMProgressState.Failed);
+      }
       result.error("copy file error", inputFilePath, null);
       return null;
     }
-    return outputFilePath;
+    return result.cancelled ? null : outputFilePath;
   }
 
   static makeAssetOutputPath(cacheDirectory: string, uri: string,
@@ -1007,7 +1165,8 @@ class FileUtils {
       extension = defExtension;
     } else if (hasInputExtension) {
       extension = inputFilePath.substring(extensionIndex);
-    } else {
+    }
+    else {
       extension = ".jpg";
     }
 

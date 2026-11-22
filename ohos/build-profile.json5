@@ -1,9 +1,10 @@
 {
-  apiType: "stageMode",
-  buildOption: {},
-  targets: [
+  "apiType": "stageMode",
+  "buildOption": {
+  },
+  "targets": [
     {
-      name: "default",
-    },
-  ],
+      "name": "default"
+    }
+  ]
 }

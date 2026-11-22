@@ -85,15 +85,12 @@ export default class PhotoManagerNotifyPlugin implements FlutterPlugin, MethodCa
       map.set('type', changeData.type);
       map.set('typeName', typeName.toLowerCase());
     }
-
     if (changeData.uris != undefined) {
       map.set('uris', changeData.uris);
     }
-
     if (changeData.extraUris != undefined) {
       map.set('extraUris', changeData.extraUris);
     }
     PhotoManagerNotifyPlugin.channel?.invokeMethod('change', map);
   }
-
 }

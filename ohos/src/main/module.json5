@@ -1,7 +1,10 @@
 {
-  module: {
-    name: "photo_manager",
-    type: "har",
-    deviceTypes: ["default", "tablet"],
-  },
+  "module": {
+    "name": "photo_manager",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ]
+  }
 }
