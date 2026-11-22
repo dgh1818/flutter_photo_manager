@@ -7,7 +7,7 @@ import 'dart:io';
 import 'package:photo_manager/platform_utils.dart';
 
 import '../filter/base_filter.dart';
-import '../filter/classical/filter_option_group.dart';
+import '../filter/custom/custom_columns.dart';
 import '../filter/path_filter.dart';
 import '../internal/enums.dart';
 import '../types/entity.dart';
@@ -33,7 +33,7 @@ class ConvertUtils {
         convertMapToPath(
           item.cast<String, dynamic>(),
           type: type,
-          filterOption: filterOption ?? FilterOptionGroup(),
+          filterOption: filterOption,
         ),
       );
     }
@@ -88,7 +88,7 @@ class ConvertUtils {
       name: data['name'] as String,
       // ignore: deprecated_member_use_from_same_package
       albumType: data['albumType'] as int? ?? 1,
-      filterOption: filterOption ?? FilterOptionGroup(),
+      filterOption: filterOption,
       lastModified: lastModified,
       type: type,
       isAll: data['isAll'] as bool,
@@ -109,6 +109,11 @@ class ConvertUtils {
     Map<String, dynamic> data, {
     String? title,
   }) {
+    final rawLat = data['lat'];
+    final lat = rawLat is num && rawLat != 0 ? rawLat.toDouble() : null;
+    final rawLng = data['lng'];
+    final lng = rawLng is num && rawLng != 0 ? rawLng.toDouble() : null;
+
     final AssetEntity result = AssetEntity(
       id: data['id'] as String,
       typeInt: data['type'] as int,
@@ -116,15 +121,15 @@ class ConvertUtils {
       height: data['height'] as int,
       duration: data['duration'] as int? ?? 0,
       orientation: data['orientation'] as int? ?? 0,
-      isFavorite: data['favorite'] as bool? ?? false,
+      isFavorite: data[CustomColumns.base.isFavorite] as bool? ?? false,
       title: data['title'] as String? ?? title,
       subtype: data['subtype'] as int? ?? 0,
       createDateSecond: data['createDt'] as int?,
       modifiedDateSecond: data['modifiedDt'] as int?,
       relativePath: data['relativePath'] as String?,
-      latitude: data['lat'] as double?,
-      longitude: data['lng'] as double?,
       mimeType: data['mimeType'] as String?,
+      latitude: lat,
+      longitude: lng,
     );
     return result;
   }

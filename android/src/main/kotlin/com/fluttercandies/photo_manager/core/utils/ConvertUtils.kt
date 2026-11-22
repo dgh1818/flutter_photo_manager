@@ -50,6 +50,7 @@ object ConvertUtils {
             "width" to entity.width,
             "height" to entity.height,
             "orientation" to entity.orientation,
+            "is_favorite" to entity.isFavorite,
             "modifiedDt" to entity.modifiedDate,
             "lat" to entity.lat,
             "lng" to entity.lng,
@@ -103,7 +104,10 @@ object ConvertUtils {
         return DateCond(min, max, ignore)
     }
 
-    fun convertToFilterOptions(map: Map<*, *>): FilterOption {
+    fun convertToFilterOptions(map: Map<*, *>?): FilterOption? {
+        if (map == null) {
+            return null
+        }
         val type = map["type"] as Int
         val childMap = map["child"] as Map<*, *>
         if (type == 0) {

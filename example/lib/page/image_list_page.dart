@@ -15,7 +15,6 @@ import '../util/log.dart';
 import '../widget/dialog/list_dialog.dart';
 import '../widget/image_item_widget.dart';
 import '../widget/loading_widget.dart';
-
 import 'copy_to_another_gallery_example.dart';
 import 'detail_page.dart';
 import 'move_to_another_gallery_example.dart';
@@ -183,6 +182,14 @@ class _GalleryContentListPageState extends State<GalleryContentListPage> {
               onPressed: () => CommonUtil.showInfoDialog(context, entity),
             ),
             ElevatedButton(
+              child: const Text('latLngAsync'),
+              onPressed: () => CommonUtil.showResultDialog(
+                context,
+                'latLngAsync',
+                entity.latlngAsync().then((r) => r.toString()),
+              ),
+            ),
+            ElevatedButton(
               child: const Text('show 500 size thumb '),
               onPressed: () => showThumb(entity, 500),
             ),
@@ -207,36 +214,40 @@ class _GalleryContentListPageState extends State<GalleryContentListPage> {
                 <int>[500, 600, 700, 1000, 1500, 2000],
               ),
             ),
-            if (Platform.isIOS || Platform.isMacOS || PlatformUtils.isOhos)
-              ElevatedButton(
-                child: const Text('Toggle isFavorite'),
-                onPressed: () async {
-                  final bool isFavorite = entity.isFavorite;
-                  print('Current isFavorite: $isFavorite');
-                  if (PlatformUtils.isOhos) {
-                    await PhotoManager.editor.ohos.favoriteAsset(
-                      entity: entity,
-                      favorite: !isFavorite,
-                    );
-                  } else {
-                    await PhotoManager.editor.darwin.favoriteAsset(
-                      entity: entity,
-                      favorite: !isFavorite,
-                    );
-                  }
-                  final AssetEntity? newEntity =
-                      await entity.obtainForNewProperties();
-                  print('New isFavorite: ${newEntity?.isFavorite}');
-                  if (!mounted) {
-                    return;
-                  }
-                  if (newEntity != null) {
-                    entity = newEntity;
-                    readPathProvider(context).list[index] = newEntity;
-                    setState(() {});
-                  }
-                },
-              ),
+            ElevatedButton(
+              child: const Text('Toggle isFavorite'),
+              onPressed: () async {
+                final bool isFavorite = entity.isFavorite;
+                print('Current isFavorite: $isFavorite');
+                if (PlatformUtils.isOhos) {
+                  await PhotoManager.editor.ohos.favoriteAsset(
+                    entity: entity,
+                    favorite: !isFavorite,
+                  );
+                } else if (Platform.isAndroid) {
+                  await PhotoManager.editor.android.favoriteAsset(
+                    entity: entity,
+                    favorite: !isFavorite,
+                  );
+                } else {
+                  await PhotoManager.editor.darwin.favoriteAsset(
+                    entity: entity,
+                    favorite: !isFavorite,
+                  );
+                }
+                final AssetEntity? newEntity =
+                    await entity.obtainForNewProperties();
+                print('New isFavorite: ${newEntity?.isFavorite}');
+                if (!mounted) {
+                  return;
+                }
+                if (newEntity != null) {
+                  entity = newEntity;
+                  readPathProvider(context).list[index] = newEntity;
+                  setState(() {});
+                }
+              },
+            ),
             if ((Platform.isIOS || Platform.isMacOS) && entity.isLivePhoto)
               ElevatedButton(
                 onPressed: () {

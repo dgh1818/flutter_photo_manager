@@ -6,15 +6,15 @@ that can be found in the LICENSE file. -->
 
 [English](README.md) | 中文
 
-[![pub package](https://img.shields.io/pub/v/photo_manager?label=%E7%A8%B3%E5%AE%9A%E7%89%88)][pub package]
-[![pub pre-release package](https://img.shields.io/pub/v/photo_manager?color=9d00ff&include_prereleases&label=%E6%B5%8B%E8%AF%95%E7%89%88)][pub package]
-[![Build status](https://img.shields.io/github/actions/workflow/status/fluttercandies/flutter_photo_manager/runnable.yml?branch=main&label=CI&logo=github&style=flat-square)](https://github.com/fluttercandies/flutter_photo_manager/actions/workflows/runnable.yml)
-[![GitHub license](https://img.shields.io/github/license/fluttercandies/flutter_photo_manager)](https://github.com/fluttercandies/flutter_photo_manager/blob/main/LICENSE)
+[![pub package](https://img.shields.io/pub/v/photo_manager?label=%E7%A8%B3%E5%AE%9A%E7%89%88&style=flat)][pub package]
+[![pub pre-release package](https://img.shields.io/pub/v/photo_manager?color=9d00ff&include_prereleases&label=%E6%B5%8B%E8%AF%95%E7%89%88&style=flat)][pub package]
+[![Build status](https://img.shields.io/github/actions/workflow/status/fluttercandies/flutter_photo_manager/runnable.yml?branch=main&label=CI&logo=github&style=flat)](https://github.com/fluttercandies/flutter_photo_manager/actions/workflows/runnable.yml)
+[![GitHub license](https://img.shields.io/github/license/fluttercandies/flutter_photo_manager?style=flat)](https://github.com/fluttercandies/flutter_photo_manager/blob/main/LICENSE)
 
-[![GitHub stars](https://img.shields.io/github/stars/fluttercandies/flutter_photo_manager?logo=github&style=flat-square)](https://github.com/fluttercandies/flutter_photo_manager/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/fluttercandies/flutter_photo_manager?logo=github&style=flat-square)](https://github.com/fluttercandies/flutter_photo_manager/network)
+[![GitHub stars](https://img.shields.io/github/stars/fluttercandies/flutter_photo_manager?logo=github&style=flat)](https://github.com/fluttercandies/flutter_photo_manager/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/fluttercandies/flutter_photo_manager?logo=github&style=flat)](https://github.com/fluttercandies/flutter_photo_manager/network)
 [![Awesome Flutter](https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg)](https://github.com/Solido/awesome-flutter)
-<a target="_blank" href="https://jq.qq.com/?_wv=1027&k=5bcc0gy"><img border="0" src="https://pub.idqqimg.com/wpa/images/group.png" alt="FlutterCandies" title="FlutterCandies"></a>
+<a href="https://qm.qq.com/q/ZyJbSVjfSU"><img src="https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffluttercandies%2F.github%2Frefs%2Fheads%2Fmain%2Fdata.yml&query=%24.qq_group_number&label=QQ%E7%BE%A4&logo=qq&style=flat&color=1DACE8" /></a>
 
 通过相册的抽象 API 对设备中的资源（图片、视频、音频）进行管理，不需要集成 UI。
 在 Android、iOS、macOS and OpenHarmony上可用。
@@ -59,18 +59,22 @@ that can be found in the LICENSE file. -->
         * [Android 受限的资源权限](#android-受限的资源权限)
     * [获取相簿或图集 (`AssetPathEntity`)](#获取相簿或图集-assetpathentity)
       * [`getAssetPathList` 方法的参数](#getassetpathlist-方法的参数)
-      * [PMPathFilterOption](#pmpathfilteroption)
+      * [PMPathFilterOption (2.7.0 新增)](#pmpathfilteroption-270-新增)
     * [获取资源 (`AssetEntity`)](#获取资源-assetentity)
       * [通过 `AssetPathEntity` 获取](#通过-assetpathentity-获取)
       * [通过 `PhotoManager` 方法 (2.6.0+) 获取](#通过-photomanager-方法-260-获取)
       * [通过 ID 获取](#通过-id-获取)
       * [通过原始数据获取](#通过原始数据获取)
       * [通过 iCloud 获取](#通过-icloud-获取)
+      * [取消加载 (3.8.0 新增)](#取消加载-380-新增)
       * [展示资源](#展示资源)
       * [获取文件](#获取文件)
       * [获取「实况照片」](#获取实况照片)
         * [仅过滤「实况照片」](#仅过滤实况照片)
         * [获取「实况照片」的视频](#获取实况照片的视频)
+      * [包含隐藏资源（仅 iOS 平台有效）](#包含隐藏资源仅-ios-平台有效)
+        * [与 FilterOptionGroup 一起使用](#与-filteroptiongroup-一起使用)
+        * [与 CustomFilter 一起使用](#与-customfilter-一起使用)
       * [限制](#限制)
         * [Android 10 媒体位置权限](#android-10-媒体位置权限)
         * [原始数据的使用](#原始数据的使用)
@@ -290,23 +294,24 @@ final List<AssetPathEntity> paths = await PhotoManager.getAssetPathList();
 | filterOption     | 用于筛选 AssetEntity，详情请参阅 [过滤资源](#过滤资源)                                         | FilterOptionGroup() |
 | pathFilterOption | 只对 iOS 和 macOS生效，对应原生中的相册类型，详情请参阅 [PMPathFilterOption](#pmpathfilteroption)。 | 默认为包含所有             |
 
-#### PMPathFilterOption
+#### PMPathFilterOption (2.7.0 新增)
 
-自 2.7.0 版本开始提供，当前仅支持 iOS 和 macOS。
+> [!NOTE]
+> 当前仅在 iOS 和 macOS 上可用.
 
 ```dart
 final List<PMDarwinAssetCollectionType> pathTypeList = []; // 配置为你需要的类型
 final List<PMDarwinAssetCollectionSubtype> pathSubTypeList = []; // 配置为你需要的子类型
 final darwinPathFilterOption = PMDarwinPathFilter(
-      type: pathTypeList,
-      subType: pathSubTypeList,
-    );
+  type: pathTypeList,
+  subType: pathSubTypeList,
+);
 PMPathFilter pathFilter = PMPathFilter();
 ```
 
- `PMDarwinAssetCollectionType`的枚举值一一对应 [PHAssetCollectionType | 苹果官网文档](https://developer.apple.com/documentation/photokit/phassetcollectiontype?language=objc).
+`PMDarwinAssetCollectionType`的枚举值一一对应 [PHAssetCollectionType | 苹果官网文档](https://developer.apple.com/documentation/photokit/phassetcollectiontype?language=objc).
 
- `PMDarwinAssetCollectionSubtype` 的枚举值一一对应 [PHAssetCollectionSubType | 苹果官网文档](https://developer.apple.com/documentation/photokit/phassetcollectionsubtype?language=objc).
+`PMDarwinAssetCollectionSubtype` 的枚举值一一对应 [PHAssetCollectionSubType | 苹果官网文档](https://developer.apple.com/documentation/photokit/phassetcollectionsubtype?language=objc).
 
 ### 获取资源 (`AssetEntity`)
 
@@ -426,6 +431,28 @@ iCloud 文件只能在设备上的 Apple ID 正常登录时获取。
 当账号要求重新输入密码验证时，未缓存在本地的 iCloud 文件将无法访问，
 此时相关方法会抛出 `CloudPhotoLibraryErrorDomain` 错误。
 
+#### 取消加载 (3.8.0 新增)
+
+> [!NOTE]
+> 当前仅在 iOS 和 macOS 上可用.
+
+上述的 `AssetEntity` 方法均添加了 `cancelToken` 参数，
+可以用于取消加载过程。
+
+其他方法如果也添加了 `cancelToken` 参数，同样可以用于取消加载过程。
+
+```dart
+final PMCancelToken cancelToken = PMCancelToken();
+final File? file = await yourAssetEntity.loadFile(cancelToken: cancelToken);
+await cancelToken.cancel();
+```
+
+`PhotoManager` 也有一个方法可以取消所有加载：
+
+```dart
+await PhotoManager.cancelAllRequest();
+```
+
 #### 展示资源
 
 从 v3.0.0 开始，插件不再提供任何 UI 组件。
@@ -519,6 +546,41 @@ final File? convertedFile = await entity.loadFile(
   darwinFileType: PMDarwinAVFileType.mp4,
 );
 ```
+
+#### 包含隐藏资源（仅 iOS 平台有效）
+
+在 iOS 16 及以上版本中，用户可以要求验证才能查看隐藏相册，并且该设置默认为开启。在标准查询中，系统不会返回隐藏的资源。
+
+本插件现在支持通过 `includeHiddenAssets` 选项在 iOS 平台上包含隐藏资源：
+
+##### 与 FilterOptionGroup 一起使用
+
+```dart
+final FilterOptionGroup filterOption = FilterOptionGroup(
+  // 其他选项...
+  includeHiddenAssets: true, // 设置为 true 以包含隐藏资源
+);
+
+// 在获取资源时使用过滤选项
+final List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
+  filterOption: filterOption,
+);
+```
+
+##### 与 CustomFilter 一起使用
+
+```dart
+final filter = CustomFilter.sql(
+  where: '${CustomColumns.base.width} > 100',
+  // 其他选项...
+);
+filter.includeHiddenAssets = true; // 设置为 true 以包含隐藏资源
+
+// 在获取资源时使用过滤器
+final int count = await PhotoManager.getAssetCount(filterOption: filter);
+```
+
+注意：此选项仅在 iOS 平台上生效。在其他平台上，它将被忽略。如果用户在 iOS 16+ 上为隐藏相册启用了验证（默认开启），即使设置了 includeHiddenAssets 为 true，第三方应用也无法访问隐藏的资源。
 
 #### 限制
 
@@ -637,6 +699,8 @@ final FilterOptionGroup filterOption = FilterOptionGroup(
       asc: false,
     ),
   ],
+  /// 包含隐藏资源（仅 iOS 平台有效）
+  includeHiddenAssets: false,
   /// 其他选项
 );
 ```
@@ -656,10 +720,13 @@ SQL 筛选的字段名称在不同平台上是不一致的，
 构造一个 `CustomFilter` 的例子：
 ```dart
 CustomFilter createFilter() {
-  return CustomFilter.sql(
+  final filter = CustomFilter.sql(
     where: '${CustomColumns.base.width} > 100 AND ${CustomColumns.base.height} > 200',
     orderBy: [OrderByItem.desc(CustomColumns.base.createDate)],
   );
+  // 包含隐藏资源（仅 iOS 平台有效）
+  filter.includeHiddenAssets = true;
+  return filter;
 }
 ```
 

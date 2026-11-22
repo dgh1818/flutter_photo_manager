@@ -58,11 +58,15 @@ class PhotoManagerPlugin(
     }
 
     val deleteManager = PhotoManagerDeleteManager(applicationContext, activity)
+    val writeManager = PhotoManagerWriteManager(applicationContext, activity)
+    val favoriteManager = PhotoManagerFavoriteManager(applicationContext)
 
     fun bindActivity(activity: Activity?) {
         this.activity = activity
         permissionsUtils.withActivity(activity)
         deleteManager.bindActivity(activity)
+        writeManager.bindActivity(activity)
+        favoriteManager.bindActivity(activity)
     }
 
     private val notifyChannel = PhotoManagerNotifyChannel(
@@ -335,14 +339,6 @@ class PhotoManagerPlugin(
         }
     }
 
-    private fun replyPermissionError(resultHandler: ResultHandler) {
-        resultHandler.replyError(
-            "Request for permission failed.",
-            "User denied permission.",
-            null
-        )
-    }
-
     private fun handleMethodResult(
         resultHandler: ResultHandler,
         needLocationPermission: Boolean
@@ -456,6 +452,12 @@ class PhotoManagerPlugin(
                 }
             }
 
+            Methods.getPathRelativePath -> {
+                val id = call.argument<String>("id")!!
+                val relativePath = photoManager.getPathRelativePath(id)
+                resultHandler.reply(relativePath)
+            }
+
             Methods.getLatLng -> {
                 val id = call.argument<String>("id")!!
                 // 读取id
@@ -476,11 +478,14 @@ class PhotoManagerPlugin(
             Methods.saveImage -> {
                 try {
                     val bytes = call.argument<ByteArray>("image")!!
-                    val filename = call.argument<String>("filename") ?: ""
-                    val title = call.argument<String>("title") ?: ""
-                    val desc = call.argument<String>("desc") ?: ""
-                    val relativePath = call.argument<String>("relativePath") ?: ""
+                    val filename = call.argument<String>("filename")!!
+                    val title = call.argument<String?>("title") ?: ""
+                    val desc = call.argument<String?>("desc") ?: ""
+                    val relativePath = call.argument<String?>("relativePath") ?: ""
                     val orientation = call.argument<Int?>("orientation")
+                    val latitude = call.argument<Double?>("latitude")
+                    val longitude = call.argument<Double?>("longitude")
+                    val creationDate = call.argument<Long?>("creationDate")
                     val entity = photoManager.saveImage(
                         bytes,
                         filename,
@@ -488,34 +493,43 @@ class PhotoManagerPlugin(
                         desc,
                         relativePath,
                         orientation,
+                        latitude,
+                        longitude,
+                        creationDate,
                     )
                     val map = ConvertUtils.convertAsset(entity)
                     resultHandler.reply(map)
                 } catch (e: Exception) {
                     LogUtils.error("save image error", e)
-                    resultHandler.replyError(call.method, message = null, obj = e)
+                    resultHandler.replyError(call.method, message = null, details = e)
                 }
             }
 
             Methods.saveImageWithPath -> {
                 try {
                     val filePath = call.argument<String>("path")!!
-                    val title = call.argument<String>("title") ?: ""
-                    val desc = call.argument<String>("desc") ?: ""
-                    val relativePath = call.argument<String>("relativePath") ?: ""
+                    val title = call.argument<String>("title")!!
+                    val desc = call.argument<String?>("desc") ?: ""
+                    val relativePath = call.argument<String?>("relativePath") ?: ""
                     val orientation = call.argument<Int?>("orientation")
+                    val latitude = call.argument<Double?>("latitude")
+                    val longitude = call.argument<Double?>("longitude")
+                    val creationDate = call.argument<Long?>("creationDate")
                     val entity = photoManager.saveImage(
                         filePath,
                         title,
                         desc,
                         relativePath,
                         orientation,
+                        latitude,
+                        longitude,
+                        creationDate,
                     )
                     val map = ConvertUtils.convertAsset(entity)
                     resultHandler.reply(map)
                 } catch (e: Exception) {
                     LogUtils.error("save image error", e)
-                    resultHandler.replyError(call.method, message = null, obj = e)
+                    resultHandler.replyError(call.method, message = null, details = e)
                 }
             }
 
@@ -523,22 +537,39 @@ class PhotoManagerPlugin(
                 try {
                     val filePath = call.argument<String>("path")!!
                     val title = call.argument<String>("title")!!
-                    val desc = call.argument<String>("desc") ?: ""
-                    val relativePath = call.argument<String>("relativePath") ?: ""
+                    val desc = call.argument<String?>("desc") ?: ""
+                    val relativePath = call.argument<String?>("relativePath") ?: ""
                     val orientation = call.argument<Int?>("orientation")
+                    val latitude = call.argument<Double?>("latitude")
+                    val longitude = call.argument<Double?>("longitude")
+                    val creationDate = call.argument<Long?>("creationDate")
                     val entity = photoManager.saveVideo(
                         filePath,
                         title,
                         desc,
                         relativePath,
                         orientation,
+                        latitude,
+                        longitude,
+                        creationDate,
                     )
                     val map = ConvertUtils.convertAsset(entity)
                     resultHandler.reply(map)
                 } catch (e: Exception) {
                     LogUtils.error("save video error", e)
-                    resultHandler.replyError(call.method, message = null, obj = e)
+                    resultHandler.replyError(call.method, message = null, details = e)
                 }
+            }
+
+            Methods.favoriteAsset -> {
+                val assetId = call.argument<String>("id")!!
+                val isFavorite = call.argument<Boolean>("favorite")!!
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                    LogUtils.error("The API 30 or lower have no IS_FAVORITE row in MediaStore.")
+                    resultHandler.reply(false)
+                    return
+                }
+                favoriteManager.favoriteAsset(photoManager.getUri(assetId), isFavorite, resultHandler)
             }
 
             Methods.copyAsset -> {
@@ -551,6 +582,32 @@ class PhotoManagerPlugin(
                 val assetId = call.argument<String>("assetId")!!
                 val albumId = call.argument<String>("albumId")!!
                 photoManager.moveToGallery(assetId, albumId, resultHandler)
+            }
+
+            Methods.moveAssetsToPath -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        val assetIds = call.argument<List<String>>("assetIds")!!
+                        val targetPath = call.argument<String>("targetPath")!!
+                        
+                        val uris = assetIds.map { photoManager.getUri(it) }
+                        if (uris.isEmpty()) {
+                            resultHandler.replyError("No valid URIs found for the given asset IDs")
+                            return
+                        }
+                        
+                        writeManager.moveToPathWithPermission(uris, targetPath, resultHandler)
+                    } catch (e: Exception) {
+                        LogUtils.error("moveAssetsToPath failed", e)
+                        resultHandler.replyError("moveAssetsToPath failed", message = e.message)
+                    }
+                } else {
+                    LogUtils.error("moveAssetsToPath requires Android 11+ (API 30+)")
+                    resultHandler.replyError(
+                        "moveAssetsToPath requires Android 11+ (API 30+)",
+                        message = "Current API level: ${Build.VERSION.SDK_INT}"
+                    )
+                }
             }
 
             Methods.deleteWithIds -> {
@@ -630,8 +687,8 @@ class PhotoManagerPlugin(
         return this.argument<Int>(key)!!
     }
 
-    private fun MethodCall.getOption(): FilterOption {
-        val arguments = argument<Map<*, *>>("option")!!
+    private fun MethodCall.getOption(): FilterOption? {
+        val arguments = argument<Map<*, *>>("option")
         return ConvertUtils.convertToFilterOptions(arguments)
     }
 }

@@ -10,6 +10,7 @@ import com.fluttercandies.photo_manager.core.PhotoManager
 import com.fluttercandies.photo_manager.core.entity.AssetEntity
 import com.fluttercandies.photo_manager.core.entity.AssetPathEntity
 import com.fluttercandies.photo_manager.core.entity.filter.FilterOption
+import com.fluttercandies.photo_manager.extension.*
 import java.io.File
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -29,13 +30,17 @@ object DBUtils : IDBUtils {
     override fun getAssetPathList(
         context: Context,
         requestType: Int,
-        option: FilterOption
+        option: FilterOption?
     ): List<AssetPathEntity> {
         val list = ArrayList<AssetPathEntity>()
         val args = ArrayList<String>()
-        val where = option.makeWhere(requestType, args)
-        val selection =
-            "${MediaStore.MediaColumns.BUCKET_ID} IS NOT NULL $where) GROUP BY (${MediaStore.MediaColumns.BUCKET_ID}"
+        val where = option?.makeWhere(requestType, args)
+            ?: " AND ${RequestTypeUtils.toWhere(requestType)}"
+
+        var selection: String = "${MediaStore.MediaColumns.BUCKET_ID} IS NOT NULL"
+        selection += " $where"
+        selection += ") GROUP BY (${MediaStore.MediaColumns.BUCKET_ID}"
+
         val cursor = context.contentResolver.logQuery(
             allUri,
             IDBUtils.storeBucketKeys + arrayOf("count(1)"),
@@ -49,7 +54,7 @@ object DBUtils : IDBUtils {
                 val name = it.getString(1) ?: ""
                 val assetCount = it.getInt(2)
                 val entity = AssetPathEntity(id, name, assetCount, 0)
-                if (option.containsPathModified) {
+                if (option?.containsPathModified == true) {
                     injectModifiedDate(context, entity)
                 }
                 list.add(entity)
@@ -62,14 +67,16 @@ object DBUtils : IDBUtils {
     override fun getMainAssetPathEntity(
         context: Context,
         requestType: Int,
-        option: FilterOption
+        option: FilterOption?
     ): List<AssetPathEntity> {
         val list = ArrayList<AssetPathEntity>()
         val projection = IDBUtils.storeBucketKeys + arrayOf("count(1)")
         val args = ArrayList<String>()
-        val where = option.makeWhere(requestType, args)
-        val selections =
-            "${MediaStore.MediaColumns.BUCKET_ID} IS NOT NULL $where"
+        val where = option?.makeWhere(requestType, args)
+            ?: " AND ${RequestTypeUtils.toWhere(requestType)}"
+        var selections =
+            "${MediaStore.MediaColumns.BUCKET_ID} IS NOT NULL"
+        selections += " $where"
 
         val cursor = context.contentResolver.logQuery(
             allUri,
@@ -99,10 +106,11 @@ object DBUtils : IDBUtils {
         context: Context,
         pathId: String,
         type: Int,
-        option: FilterOption
+        option: FilterOption?
     ): AssetPathEntity? {
         val args = ArrayList<String>()
-        val where = option.makeWhere(type, args)
+        val where = option?.makeWhere(type, args)
+            ?: " AND ${RequestTypeUtils.toWhere(type)}"
         val idSelection: String
         if (pathId == "") {
             idSelection = ""
@@ -110,8 +118,10 @@ object DBUtils : IDBUtils {
             idSelection = "AND ${MediaStore.MediaColumns.BUCKET_ID} = ?"
             args.add(pathId)
         }
-        val selection =
-            "${MediaStore.MediaColumns.BUCKET_ID} IS NOT NULL $where $idSelection) GROUP BY (${MediaStore.MediaColumns.BUCKET_ID}"
+        var selection: String = "${MediaStore.MediaColumns.BUCKET_ID} IS NOT NULL"
+        selection += " $where"
+        selection += " $idSelection) GROUP BY (${MediaStore.MediaColumns.BUCKET_ID}"
+
         val cursor = context.contentResolver.logQuery(
             allUri,
             IDBUtils.storeBucketKeys + arrayOf("count(1)"),
@@ -135,7 +145,7 @@ object DBUtils : IDBUtils {
         page: Int,
         size: Int,
         requestType: Int,
-        option: FilterOption
+        option: FilterOption?
     ): List<AssetEntity> {
         val isAll = pathId.isEmpty()
         val list = ArrayList<AssetEntity>()
@@ -143,13 +153,15 @@ object DBUtils : IDBUtils {
         if (!isAll) {
             args.add(pathId)
         }
-        val where = option.makeWhere(requestType, args)
+        val where = option?.makeWhere(requestType, args)
+            ?: " AND ${RequestTypeUtils.toWhere(requestType)}"
         val keys = keys()
-        val selection = if (isAll) {
-            "${MediaStore.MediaColumns.BUCKET_ID} IS NOT NULL $where"
+        var selection = if (isAll) {
+            "${MediaStore.MediaColumns.BUCKET_ID} IS NOT NULL"
         } else {
-            "${MediaStore.MediaColumns.BUCKET_ID} = ? $where"
+            "${MediaStore.MediaColumns.BUCKET_ID} = ?"
         }
+        selection += " $where"
         val sortOrder = getSortOrder(page * size, size, option)
         val cursor = context.contentResolver.logQuery(
             allUri,
@@ -174,7 +186,7 @@ object DBUtils : IDBUtils {
         start: Int,
         end: Int,
         requestType: Int,
-        option: FilterOption
+        option: FilterOption?
     ): List<AssetEntity> {
         val isAll = galleryId.isEmpty()
         val list = ArrayList<AssetEntity>()
@@ -182,14 +194,16 @@ object DBUtils : IDBUtils {
         if (!isAll) {
             args.add(galleryId)
         }
-        val where = option.makeWhere(requestType, args)
+        val where = option?.makeWhere(requestType, args)
+            ?: " AND ${RequestTypeUtils.toWhere(requestType)}"
         val keys = keys()
 
-        val selection = if (isAll) {
-            "${MediaStore.MediaColumns.BUCKET_ID} IS NOT NULL $where"
+        var selection = if (isAll) {
+            "${MediaStore.MediaColumns.BUCKET_ID} IS NOT NULL"
         } else {
-            "${MediaStore.MediaColumns.BUCKET_ID} = ? $where"
+            "${MediaStore.MediaColumns.BUCKET_ID} = ?"
         }
+        selection += " $where"
         val pageSize = end - start
         val sortOrder = getSortOrder(start, pageSize, option)
         val cursor = context.contentResolver.logQuery(
@@ -276,7 +290,7 @@ object DBUtils : IDBUtils {
             MediaStore.MediaColumns.WIDTH,
             MediaStore.MediaColumns.HEIGHT
         )
-        val mediaType = convertTypeToMediaType(asset.type)
+        val mediaType = MediaStoreUtils.convertTypeToMediaType(asset.type)
         if (mediaType != MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO) {
             copyKeys.add(MediaStore.Video.VideoColumns.DESCRIPTION)
         }
@@ -444,6 +458,28 @@ object DBUtils : IDBUtils {
                 ?: return null
             val galleryPath = File(path).parentFile?.absolutePath ?: return null
             return GalleryInfo(galleryPath, galleryId, name)
+        }
+    }
+
+    override fun getPathRelativePath(context: Context, galleryId: String): String? {
+        if (galleryId == PhotoManager.ALL_ID) {
+            return null
+        }
+        val cursor = context.contentResolver.logQuery(
+            allUri,
+            arrayOf(MediaStore.MediaColumns.DATA),
+            "${MediaStore.MediaColumns.BUCKET_ID} = ?",
+            arrayOf(galleryId),
+            null
+        )
+        cursor.use {
+            if (!it.moveToNext()) {
+                return null
+            }
+            val dataPath = it.getStringOrNull(MediaStore.MediaColumns.DATA)
+            return dataPath?.let { path ->
+                File(path).parent
+            }
         }
     }
 

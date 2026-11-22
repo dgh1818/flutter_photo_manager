@@ -43,6 +43,7 @@ class PMConstants {
   static const String mGetLatLngAndroidQ = 'getLatLngAndroidQ';
   static const String mGetTitleAsync = 'getTitleAsync';
   static const String mGetMimeTypeAsync = 'getMimeTypeAsync';
+  static const String mGetPathRelativePath = 'getPathRelativePath';
   static const String mGetMediaUrl = 'getMediaUrl';
   static const String mGetSubPath = 'getSubPath';
   static const String mCopyAsset = 'copyAsset';
@@ -59,10 +60,15 @@ class PMConstants {
   static const String mCreateFolder = 'createFolder';
   static const String mRemoveInAlbum = 'removeInAlbum';
   static const String mMoveAssetToPath = 'moveAssetToPath';
+  static const String mMoveAssetsToPath = 'moveAssetsToPath';
   static const String mColumnNames = 'getColumnNames';
 
   static const String mGetAssetCount = 'getAssetCount';
   static const String mGetAssetsByRange = 'getAssetsByRange';
+
+  static const String mCancelRequestWithCancelToken =
+      'cancelRequestWithCancelToken';
+  static const String mCancelAllRequest = 'cancelAllRequest';
 
   /// Constant value.
   static const int vDefaultThumbnailSize = 150;
@@ -74,4 +80,6 @@ class PMConstants {
     'ohos.permission.READ_IMAGEVIDEO',
     'ohos.permission.WRITE_IMAGEVIDEO',
   ];
+
+  static const cancelTokenKey = 'cancelToken';
 }

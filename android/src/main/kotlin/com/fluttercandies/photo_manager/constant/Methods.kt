@@ -71,6 +71,7 @@ class Methods {
         const val getOriginBytes = "getOriginBytes"
         const val getMediaUrl = "getMediaUrl"
         const val fetchEntityProperties = "fetchEntityProperties"
+        const val getPathRelativePath = "getPathRelativePath"
 
         const val getLatLng = "getLatLngAndroidQ"
         const val notify = "notify"
@@ -81,8 +82,10 @@ class Methods {
         const val saveImage = "saveImage"
         const val saveImageWithPath = "saveImageWithPath"
         const val saveVideo = "saveVideo"
+        const val favoriteAsset = "favoriteAsset"
         const val copyAsset = "copyAsset"
         const val moveAssetToPath = "moveAssetToPath"
+        const val moveAssetsToPath = "moveAssetsToPath"
         const val removeNoExistsAssets = "removeNoExistsAssets"
         const val getColumnNames = "getColumnNames"
 
