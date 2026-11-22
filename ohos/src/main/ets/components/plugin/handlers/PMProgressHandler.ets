@@ -24,7 +24,7 @@ export class PMProgressHandler implements PMProgressHandlerProtocol {
     } catch (e) {
 
     } finally {
-      if (state == PMProgressState.Success || state == PMProgressState.Failed) {
+      if (state == PMProgressState.Success || state == PMProgressState.Failed || state == PMProgressState.Cancel) {
         this.channel?.setMethodCallHandler(null);
         this.channel = null;
       }

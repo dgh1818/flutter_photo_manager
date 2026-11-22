@@ -4,6 +4,7 @@ export enum PMProgressState {
   Loading = 1,   // PMProgressStateLoading
   Success = 2,   // PMProgressStateSuccess
   Failed = 3,    // PMProgressStateFailed
+  Cancel = 4,    // PMProgressStateCancel
 }
 
 export interface PMProgressHandlerProtocol {

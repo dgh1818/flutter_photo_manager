@@ -26,7 +26,8 @@ class ReadRequest implements MethodResult {
   cancelNative?: () => void;
   outputPath?: string;
 
-  constructor(private result: MethodResult, private onFinish: () => void) {}
+  constructor(private result: MethodResult, private onFinish: () => void,
+    readonly progress?: PMProgressHandler) {}
 
   success(value: ESObject): void {
     if (this.finish()) {
@@ -65,6 +66,7 @@ class ReadRequest implements MethodResult {
     const onCancel = this.onCancel;
     const cancelNative = this.cancelNative;
     this.cancelled = true;
+    this.progress?.notify(0.0, PMProgressState.Cancel);
     this.success(null);
     onCancel?.();
     cancelNative?.();
@@ -105,13 +107,16 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
   private startRead(call: MethodCall, result: MethodResult): ReadRequest {
     const args: Map<string, ESObject> = call.args;
     const token = args.get('cancelToken') as string;
+    const progressIndex = args.get('progressHandler') as number | undefined;
+    const progress = progressIndex === undefined ? undefined :
+      new PMProgressHandler(PhotoManagerPlugin.binding!, progressIndex);
     const requests = this.reads.get(token) ?? new Set<ReadRequest>();
     const request = new ReadRequest(result, () => {
       requests.delete(request);
       if (requests.size === 0) {
         this.reads.delete(token);
       }
-    });
+    }, progress);
     requests.add(request);
     this.reads.set(token, requests);
     return request;
@@ -125,6 +130,11 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     if (call.method === 'cancelRequestWithCancelToken') {
       const args: Map<string, ESObject> = call.args;
       this.reads.get(args.get('cancelToken') as string)?.forEach((request) => request.cancel());
+      result.success(null);
+      return true;
+    }
+    if (call.method === 'cancelAllRequest') {
+      this.cancelReads();
       result.success(null);
       return true;
     }
@@ -148,8 +158,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           result.success(new Map<string, ESObject>(
             [['data', assets]]
           ));
-        }
-        else {
+        } else {
           result.error(`${call.method} failed`, `not find assets by ${args}`, null);
         }
       }
@@ -159,16 +168,9 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let id: string = args.get('id') as string;
         let isOrigin: boolean = args.get('isOrigin') as boolean;
         let subtype: number = args.get('subtype') as number;
-        let pmProgressHandler: PMProgressHandler | undefined = undefined;
-        let index = args.get('progressHandler') as number;
-        if (index != undefined) {
-          console.error("getFullFile with progressHandler:" + index);
-          pmProgressHandler = new PMProgressHandler(PhotoManagerPlugin.binding!, index);
-        }
-
         const request = this.startRead(call, result);
         try {
-          await FileUtils.getFullSizeFileWithId(this.context, request, id, isOrigin, subtype, pmProgressHandler);
+          await FileUtils.getFullSizeFileWithId(this.context, request, id, isOrigin, subtype, request.progress);
         } catch (error) {
           request.error('getFullFile failed', (error as Error).message, null);
         }
@@ -267,8 +269,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           result.success(new Map<string, ESObject>(
             [['data', assets]]
           ));
-        }
-        else {
+        } else {
           result.error(`${call.method} failed`, `not find assets by ${args}`, null);
         }
       }
@@ -293,8 +294,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           let assets: Array<Map<string, ESObject>> | null = await this.getAssetList(args, start, end, element);
           if (assets != null) {
             data.push(...assets);
-          }
-          else {
+          } else {
             result.error(`${call.method} failed`, `not find assets by ${args}`, null);
             return true;
           }
@@ -323,8 +323,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
             const error = e as BusinessError;
             if (error.code === 201 && (error.message ?? '').toLowerCase().includes('user deny')) {
               result.success(ids.slice(0, i));
-            }
-            else {
+            } else {
               result.error(`${error.code}`, call.method, `${error.message}`);
             }
             return true;
@@ -346,8 +345,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
         if (photoAsset != null) {
           result.success(PhotoAssetHandler.photoAssetToMap(photoAsset));
-        }
-        else {
+        } else {
           result.error(`${call.method} failed`, `not find asset by ${args}`, null);
         }
       }
@@ -366,8 +364,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         let photoAsset: photoAccessHelper.PhotoAsset | null = await PhotoAssetHandler.getPhotoAsset(id);
         if (photoAsset == null) {
           result.success(false);
-        }
-        else {
+        } else {
           result.success(PhotoAssetHandler.setAssetMember(photoAsset, photoAccessHelper.PhotoKeys.FAVORITE,
             favorite ? 'true' : 'false'));
         }
@@ -380,8 +377,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
         if (photoAsset != null) {
           let file = await fs.open(photoAsset.uri, fs.OpenMode.READ_ONLY);
           result.success(file.fd);
-        }
-        else {
+        } else {
           result.error(`${call.method} failed`, `not find asset by ${args}`, null);
         }
       }
@@ -400,8 +396,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           } catch (e) {
             result.error(`${call.method} failed`, e.toString(), null);
           }
-        }
-        else {
+        } else {
           let errorInfo = '';
           if (photoAsset == null) {
             errorInfo = `not find asset by ${id}`;
@@ -468,8 +463,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           }
           if (orderByItem.isAsc) {
             predicates.orderByAsc(orderByItem.column);
-          }
-          else {
+          } else {
             predicates.orderByDesc(orderByItem.column);
           }
         }
@@ -487,8 +481,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
           if (column != undefined) {
             if (orderItem.asc) {
               predicates.orderByAsc(column);
-            }
-            else {
+            } else {
               predicates.orderByDesc(column);
             }
           }
@@ -533,8 +526,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
       }
       photoFetchResult.close();
       return assets;
-    }
-    else {
+    } else {
       return null;
     }
   }
@@ -765,8 +757,7 @@ export class PhotoAssetHandler extends HandlerBase implements MethodCallHandlerB
     let position = asset.get(photoAccessHelper.PhotoKeys.POSITION) as photoAccessHelper.PositionType;
     if (position == photoAccessHelper.PositionType.CLOUD) {
       return false;
-    }
-    else {
+    } else {
       return true;
     }
 
@@ -862,9 +853,7 @@ class FileUtils {
               return;
             }
             if (!movingPhoto) {
-              if (!result.cancelled) {
-                pmProgressHandler?.notify(0.0, PMProgressState.Failed);
-              }
+              pmProgressHandler?.notify(0.0, PMProgressState.Failed);
               result.error("live photo error", "moving photo is null", null);
               return;
             }
@@ -1165,8 +1154,7 @@ class FileUtils {
       extension = defExtension;
     } else if (hasInputExtension) {
       extension = inputFilePath.substring(extensionIndex);
-    }
-    else {
+    } else {
       extension = ".jpg";
     }
 
